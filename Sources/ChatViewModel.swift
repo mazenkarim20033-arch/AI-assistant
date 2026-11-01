@@ -41,13 +41,18 @@ final class ChatViewModel: ObservableObject {
         phase = .loading(0)
         // Keep MLX's buffer cache small; iOS kills apps that use too much memory.
         Memory.cacheLimit = 20 * 1024 * 1024
+        // Defined here (not inline) because the macro pastes this expression into generated code.
+        let reportProgress: @Sendable (Progress) -> Void = { [weak self] progress in
+            let fraction = progress.fractionCompleted
+            Task { @MainActor in
+                self?.phase = .loading(fraction)
+            }
+        }
+        let configuration = selectedModel.configuration
         do {
             let container = try await #huggingFaceLoadModelContainer(
-                configuration: selectedModel.configuration,
-                progressHandler: { [weak self] progress in
-                    let fraction = progress.fractionCompleted
-                    Task { @MainActor in self?.phase = .loading(fraction) }
-                }
+                configuration: configuration,
+                progressHandler: reportProgress
             )
             // maxKVSize caps the conversation memory (rotating cache) so long chats can't grow unbounded.
             session = ChatSession(
