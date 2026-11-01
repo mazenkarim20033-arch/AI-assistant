@@ -27,6 +27,7 @@ jobs:
 
       - name: Build (unsigned; Sideloadly signs it later)
         run: |
+          set -o pipefail
           xcodebuild build \
             -project LocalAssistant.xcodeproj \
             -scheme LocalAssistant \
@@ -36,7 +37,19 @@ jobs:
             -derivedDataPath build \
             -skipMacroValidation \
             -skipPackagePluginValidation \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee build.log
+
+      - name: Surface build errors
+        if: failure()
+        run: |
+          grep -E "error|fatal|Could not|failed" build.log | head -25 | while IFS= read -r line; do echo "::error::${line:0:400}"; done
+          echo "::error::TAIL: $(tail -12 build.log | tr '\n' '|' | cut -c1-900)"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log
+          path: build.log
 
       - name: Package IPA
         run: |
