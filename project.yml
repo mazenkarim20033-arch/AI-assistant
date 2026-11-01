@@ -6,7 +6,7 @@ options:
 packages:
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm
-    upToNextMinorVersion: 3.32.3
+    minorVersion: 3.32.3
   mlx-swift:
     url: https://github.com/ml-explore/mlx-swift
     from: 0.33.0
