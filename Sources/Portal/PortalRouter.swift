@@ -14,6 +14,13 @@ final class PortalRouter: ObservableObject {
     @Published var showAnalysis = false
     @Published var showModelSheet = false
     @Published var currentImage: UIImage?
+    /// Changes whenever a new image is set, so the analysis screen knows to analyze it.
+    @Published var imageToken = UUID()
+
+    func setImage(_ image: UIImage) {
+        currentImage = image
+        imageToken = UUID()
+    }
 
     /// Closes the analysis screen and goes back to the camera.
     func reopenCamera() {
@@ -26,7 +33,7 @@ final class PortalRouter: ObservableObject {
 
     /// Opens the analysis screen for a new image (closing the camera first if it is open).
     func present(image: UIImage) {
-        currentImage = image
+        setImage(image)
         if showCamera {
             showCamera = false
             Task {

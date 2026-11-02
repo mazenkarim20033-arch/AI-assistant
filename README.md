@@ -25,6 +25,7 @@ A free Apple ID's signature lasts **7 days**: reinstall weekly (the app and its 
 
 ## Layout
 - `Sources/Agent/`: model loading, JSON action loop, tools, notes storage (no UI)
+- `Sources/Vision/`: on-device image analyzers (Apple Vision OCR and classification) and their result types
 - `Sources/Portal/`: screens and design system (`Theme.swift` holds the design tokens)
 - `Sources/Assets.xcassets/`: app icon (1024px source, single-size icon)
 - `project.yml`: XcodeGen project definition (the `.xcodeproj` is generated in CI)

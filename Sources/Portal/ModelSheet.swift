@@ -71,7 +71,8 @@ struct ModelSheet: View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "System")
             row("Language model", languageStatus, vm.phase == .ready ? Theme.cyan : Theme.secondaryText)
-            row("Visual analysis", "Not connected yet", Theme.secondaryText)
+            row("Text and labels", "Apple Vision · ready", Theme.cyan)
+            row("Vision model", "Not added yet", Theme.secondaryText)
             row("Processing", "On this iPhone, no cloud", Theme.cyan)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

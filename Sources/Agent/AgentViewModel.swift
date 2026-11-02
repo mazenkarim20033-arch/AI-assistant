@@ -80,12 +80,12 @@ final class AgentViewModel: ObservableObject {
         selectedModel.name.components(separatedBy: " (").first ?? selectedModel.name
     }
 
-    /// Adds an image to the conversation. Visual analysis isn't connected yet, so say so plainly.
+    /// Adds an image to the conversation. The language model can't use the image yet, so say so plainly.
     func attachImage(_ image: UIImage) {
         feed.append(.image(id: UUID(), image: image))
         feed.append(.notice(
             id: UUID(),
-            text: "Image added to this conversation. Visual analysis isn't connected yet, so PORTAL can't read or describe it. Text actions like notes still work."
+            text: "Image added. The text and labels found in it are on the analysis screen, but PORTAL's language model can't use them yet. Text actions like notes still work."
         ))
     }
 

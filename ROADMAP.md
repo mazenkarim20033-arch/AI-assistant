@@ -9,7 +9,8 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 | 2 | Product interface: home, camera, conversation, analysis, discover, memory screens | Complete |
 | 3 | Camera integration: permission, live preview, photo capture, gallery selection | Complete (confirmed by owner) |
 | - | Visual refinement and branding (minimal design system, home screen, app icon) | Complete (cloud build #10 passed; on-device look to be confirmed by owner) |
-| **4** | **Local visual intelligence: OCR and classification (Apple Vision), then vision-language model evaluation** | **Next milestone** |
+| **4a** | **Local visual intelligence, part 1: OCR and whole-image classification (Apple Vision), shown on the analysis screen with source labels** | **In progress: implemented, awaiting cloud build and on-device test** |
+| 4b | Local visual intelligence, part 2: evaluate and benchmark a vision-language model (SmolVLM2-500M, FastVLM-0.5B via MLXVLM) on the iPhone 15, then integrate the winner | Next, after 4a is validated on the device |
 | 5 | Agent integration: routing, structured outputs, validation, visual context, follow-ups | Planned |
 | 6 | Persistent visual memory and saved discoveries | Planned |
 | 7 | Live visual awareness (throttled frame detection; no live reasoning claims) | Planned |
@@ -20,7 +21,10 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 - Language model: Llama 3.2 3B (4-bit) via MLX Swift. Works on the iPhone 15.
 - Agent: one validated JSON action per request, executed in Swift. Tools today: save / search / list notes.
 - Camera: live preview, capture and gallery picker work. Captured images are kept in memory only.
-- **Visual analysis is not implemented.** The analysis screen says so. No OCR, detection or vision model yet.
+- Visual analysis (Phase 4a): the analysis screen runs Apple Vision OCR and whole-image classification on the phone.
+  OCR text and classifier labels are shown separately, with the analyzers' own confidences and timings.
+  **Not implemented yet:** object detection with locations, a vision-language model, and the language model
+  seeing any of this (Phase 5).
 - Visual refinement: complete (design tokens in `Theme.swift`, icon-only tab bar, minimal home screen,
   asset-catalog app icon). Cloud build #10 passed. Not yet checked on the device.
 
