@@ -4,7 +4,7 @@ import SwiftUI
 struct LocalAssistantApp: App {
     var body: some Scene {
         WindowGroup {
-            ChatView()
+            AgentView()
                 .preferredColorScheme(.dark)
         }
     }

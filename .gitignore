@@ -3,3 +3,4 @@ build/
 *.ipa
 Payload/
 .DS_Store
+*.zip
