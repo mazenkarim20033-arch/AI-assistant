@@ -7,6 +7,9 @@ struct ModelOption: Identifiable {
     let name: String
     let configuration: ModelConfiguration
 
+    /// Loaded automatically on launch unless the user picked another model.
+    static let defaultID = "llama-3.2-3b"
+
     static let all: [ModelOption] = [
         ModelOption(id: "llama-3.2-1b", name: "Llama 3.2 1B (fast, ~0.7 GB)", configuration: LLMRegistry.llama3_2_1B_4bit),
         ModelOption(id: "gemma-3-1b", name: "Gemma 3 1B (~0.7 GB)", configuration: LLMRegistry.gemma3_1B_qat_4bit),

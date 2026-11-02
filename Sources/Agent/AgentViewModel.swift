@@ -4,6 +4,7 @@ import MLX
 import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
+import Network
 import Tokenizers
 import UIKit
 
@@ -52,7 +53,12 @@ final class AgentViewModel: ObservableObject {
     @Published var phase: Phase = .idle
     @Published var feed: [FeedItem] = []
     @Published var isThinking = false
-    @Published var selectedModelID = ModelOption.all[0].id
+    /// The chosen model is remembered, and loaded automatically on the next launch.
+    @Published var selectedModelID = ModelOption.defaultID {
+        didSet { UserDefaults.standard.set(selectedModelID, forKey: "selectedModelID") }
+    }
+
+    private var didAutoLoad = false
 
     let notes: NoteStore
     private let toolList: [any AgentTool]
@@ -69,6 +75,11 @@ final class AgentViewModel: ObservableObject {
         notes = store
         toolList = all
         tools = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
+
+        if let stored = UserDefaults.standard.string(forKey: "selectedModelID"),
+           ModelOption.all.contains(where: { $0.id == stored }) {
+            selectedModelID = stored
+        }
     }
 
     private var selectedModel: ModelOption {
@@ -90,6 +101,35 @@ final class AgentViewModel: ObservableObject {
     }
 
     // MARK: - Model
+
+    /// Loads the chosen model once per launch. On a cellular connection it does nothing, so a
+    /// first-time download can't use mobile data by surprise; the user can still load it manually.
+    func autoLoad() async {
+        guard phase == .idle, !didAutoLoad else { return }
+        didAutoLoad = true
+        let onCellular = await Self.isExpensiveNetwork()
+        guard !onCellular else { return }
+        await loadModel()
+    }
+
+    /// True on cellular or other metered connections. Answers once, then stops monitoring.
+    private nonisolated static func isExpensiveNetwork() async -> Bool {
+        await withCheckedContinuation { continuation in
+            let monitor = NWPathMonitor()
+            let once = OneShot()
+            monitor.pathUpdateHandler = { path in
+                guard !once.done else { return }
+                once.done = true
+                monitor.cancel()
+                continuation.resume(returning: path.isExpensive)
+            }
+            monitor.start(queue: DispatchQueue(label: "portal.network"))
+        }
+    }
+
+    private final class OneShot: @unchecked Sendable {
+        var done = false   // only touched on the monitor's serial queue
+    }
 
     func loadModel() async {
         phase = .loading(0)

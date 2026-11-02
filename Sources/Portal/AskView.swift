@@ -115,11 +115,18 @@ struct AskView: View {
 
     private var loadPrompt: some View {
         VStack(spacing: Theme.Space.s) {
-            Text("PORTAL isn't awake yet.")
-                .font(Theme.Typeface.secondary)
-                .foregroundStyle(Theme.secondaryText)
-            Button("Load language model") { router.showModelSheet = true }
-                .buttonStyle(PortalButtonStyle())
+            if case .loading(let fraction) = vm.phase {
+                ProgressView(value: fraction).tint(Theme.cyan)
+                Text(fraction < 1 ? "PORTAL is waking up · downloading \(Int(fraction * 100))%" : "PORTAL is waking up…")
+                    .font(Theme.Typeface.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+            } else {
+                Text("PORTAL isn't awake yet.")
+                    .font(Theme.Typeface.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+                Button("Load language model") { router.showModelSheet = true }
+                    .buttonStyle(PortalButtonStyle())
+            }
         }
         .padding(Theme.Space.m)
     }

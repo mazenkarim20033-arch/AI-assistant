@@ -18,7 +18,8 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 
 ## Current status
 
-- Language model: Llama 3.2 3B (4-bit) via MLX Swift. Works on the iPhone 15.
+- Language model: Llama 3.2 3B (4-bit) via MLX Swift. Works on the iPhone 15. Loaded automatically on launch
+  (skipped on cellular so a first download never uses mobile data); a different chosen model is remembered.
 - Agent: one validated JSON action per request, executed in Swift. Tools today: save / search / list notes.
 - Camera: live preview, capture and gallery picker work. Captured images are kept in memory only.
 - Visual analysis (Phase 4a): the analysis screen runs Apple Vision OCR and whole-image classification on the phone.

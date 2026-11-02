@@ -22,6 +22,7 @@ struct PortalRoot: View {
             }
         }
         .background(Theme.background.ignoresSafeArea())
+        .task { await vm.autoLoad() }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
         }
