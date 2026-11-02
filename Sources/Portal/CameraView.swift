@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Camera screen layout. The live preview and capture are not connected yet (Phase 3),
-/// so the viewfinder says so and the capture button is disabled. Gallery selection works.
+/// Camera screen: live preview, capture, and gallery selection.
+/// Photos go to the analysis screen; analysis itself isn't connected yet.
 struct CameraView: View {
     @EnvironmentObject var router: PortalRouter
+    @StateObject private var camera = CameraController()
 
     var body: some View {
         ZStack {
@@ -18,6 +19,11 @@ struct CameraView: View {
             }
         }
         .foregroundStyle(.white)
+        .onAppear {
+            camera.onCapture = { image in router.present(image: image) }
+            camera.start()
+        }
+        .onDisappear { camera.stop() }
     }
 
     private var topBar: some View {
@@ -39,25 +45,59 @@ struct CameraView: View {
 
     private var viewfinder: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Theme.panel.opacity(0.5))
+            Theme.panel.opacity(0.5)
+
+            switch camera.status {
+            case .ready:
+                CameraPreview(session: camera.session)
+            case .checking:
+                ProgressView()
+            case .denied:
+                message(
+                    icon: "camera.badge.ellipsis",
+                    title: "Camera access is off",
+                    detail: "Allow camera access for PORTAL in Settings to take photos. You can still choose photos from your library.",
+                    showSettings: true
+                )
+            case .unavailable:
+                message(
+                    icon: "camera.metering.unknown",
+                    title: "No camera available",
+                    detail: "This device can't open a camera. You can still choose photos from your library.",
+                    showSettings: false
+                )
+            }
+
             CornerBrackets()
                 .stroke(Theme.cyan, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-            VStack(spacing: 10) {
-                Image(systemName: "camera.metering.unknown")
-                    .font(.system(size: 34))
-                    .foregroundStyle(Theme.secondaryText)
-                Text("Live preview not connected yet")
-                    .font(.subheadline.weight(.medium))
-                Text("Camera capture arrives in the next phase.\nYou can choose a photo from your library now.")
-                    .font(.footnote)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(Theme.secondaryText)
-            }
-            .padding(24)
+                .padding(10)
+                .allowsHitTesting(false)
         }
         .aspectRatio(3.0 / 4.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 24)
+    }
+
+    private func message(icon: String, title: String, detail: String, showSettings: Bool) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 34))
+                .foregroundStyle(Theme.secondaryText)
+            Text(title).font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.secondaryText)
+            if showSettings {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .buttonStyle(GhostButtonStyle())
+            }
+        }
+        .padding(24)
     }
 
     private var controls: some View {
@@ -73,11 +113,17 @@ struct CameraView: View {
 
             Spacer()
 
-            ZStack {
-                Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 3).frame(width: 76, height: 76)
-                Circle().fill(Color.white.opacity(0.25)).frame(width: 60, height: 60)
+            Button { camera.capture() } label: {
+                ZStack {
+                    Circle().strokeBorder(Color.white, lineWidth: 3).frame(width: 76, height: 76)
+                    Circle().fill(Color.white).frame(width: 60, height: 60)
+                        .scaleEffect(camera.isCapturing ? 0.85 : 1)
+                        .animation(.easeOut(duration: 0.15), value: camera.isCapturing)
+                }
             }
-            .accessibilityLabel("Capture (not available yet)")
+            .disabled(camera.status != .ready || camera.isCapturing)
+            .opacity(camera.status == .ready ? 1 : 0.35)
+            .accessibilityLabel("Take photo")
 
             Spacer()
 

@@ -89,8 +89,13 @@ struct AnalysisView: View {
             }
             .buttonStyle(PortalButtonStyle())
 
+            Button { router.reopenCamera() } label: {
+                Label("Take another photo", systemImage: "camera")
+            }
+            .buttonStyle(GhostButtonStyle())
+
             PhotoPickerButton(onPicked: { router.currentImage = $0 }) {
-                Label("Analyze another image", systemImage: "photo")
+                Label("Choose another image", systemImage: "photo")
             }
             .buttonStyle(GhostButtonStyle())
         }

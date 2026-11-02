@@ -15,6 +15,15 @@ final class PortalRouter: ObservableObject {
     @Published var showModelSheet = false
     @Published var currentImage: UIImage?
 
+    /// Closes the analysis screen and goes back to the camera.
+    func reopenCamera() {
+        showAnalysis = false
+        Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            showCamera = true
+        }
+    }
+
     /// Opens the analysis screen for a new image (closing the camera first if it is open).
     func present(image: UIImage) {
         currentImage = image

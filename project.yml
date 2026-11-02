@@ -39,6 +39,7 @@ targets:
       properties:
         CFBundleDisplayName: PORTAL
         UIUserInterfaceStyle: Dark
+        NSCameraUsageDescription: PORTAL uses the camera so you can take a photo to look at. Photos stay on your iPhone.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
