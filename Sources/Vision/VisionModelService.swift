@@ -114,7 +114,8 @@ final class VisionModelService: ObservableObject {
             let newSession = ChatSession(
                 container,
                 instructions: Self.instructions,
-                generateParameters: GenerateParameters(maxTokens: 300, maxKVSize: 4096, temperature: 0.3),
+                // No maxKVSize: a rotating cache isn't used for image prompts, and these answers are short.
+                generateParameters: GenerateParameters(maxTokens: 300, temperature: 0.3),
                 processing: UserInput.Processing(resize: CGSize(width: 672, height: 672))
             )
             session = newSession

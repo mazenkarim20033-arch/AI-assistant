@@ -90,7 +90,12 @@ final class AgentViewModel: ObservableObject {
     var transcript: [Turn] = []
     var currentPhoto: UIImage?
     var currentOCR: String?
+    var currentObjects: [ObjectDetector.Detection] = []
+    var currentLabels: [ClassificationLabel] = []
     var photoContext: String?
+    /// True from the moment a photo is shared until the first question about it is answered.
+    /// That first question triggers one look with the vision model, aimed at what was asked.
+    var photoNeedsLook = false
     private var decisions: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     static let chatPrompt = """
@@ -99,9 +104,11 @@ final class AgentViewModel: ObservableObject {
         You cannot see images yourself. When the user shares a photo, the app gives you notes from its \
         vision tools (an object detector, text recognition and a vision model). Treat the notes as \
         evidence, not certain fact: say which parts are certain and which are guesses. \
-        If the user asks about a detail of a shared photo that the notes do not cover, reply with exactly \
-        [LOOK: <a specific question about the photo>] and nothing else; the app will look again and give you \
-        the answer. Do this at most once per question, and never when no photo was shared.
+        Only if the user asks about a specific visible part of a shared photo (a button, a label, a colour, \
+        a position) that the notes do not cover, reply with exactly [LOOK: <a specific question about the \
+        photo>] and nothing else; the app will look again and give you the answer. Never do this for general \
+        questions you can answer from your own knowledge, never more than once per question, and never when \
+        no photo was shared.
         """
 
     init() {
@@ -165,6 +172,7 @@ final class AgentViewModel: ObservableObject {
         container = nil
         chatSession = nil
         phase = .idle
+        Memory.clearCache()
     }
 
     func resumeAfterVision() async {
@@ -240,7 +248,10 @@ final class AgentViewModel: ObservableObject {
         transcript = []
         currentPhoto = nil
         currentOCR = nil
+        currentObjects = []
+        currentLabels = []
         photoContext = nil
+        photoNeedsLook = false
         isThinking = false
         if let container {
             chatSession = makeChatSession(container)
@@ -256,25 +267,48 @@ final class AgentViewModel: ObservableObject {
 
     func submit(_ text: String) {
         let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let container, !request.isEmpty, !isThinking else { return }
+        guard container != nil, !request.isEmpty, !isThinking else { return }
         feed.append(.user(id: UUID(), text: request))
         transcript.append(Turn(isUser: true, text: request))
         isThinking = true
+        // Nothing here may hold on to the language model (container or session) while a request runs:
+        // the vision model needs that memory, and a leftover reference would keep both loaded and crash.
         generation = Task {
-            defer { isThinking = false }
-            if self.toolList.isEmpty, let session = self.chatSession {
-                await self.streamReply(to: request, using: session)
+            defer { self.isThinking = false }
+            if self.photoNeedsLook {
+                await self.answerAboutPhoto(request)
+            } else if self.toolList.isEmpty {
+                await self.streamReply(to: request)
             } else {
-                await self.routeToTool(request, container: container)
+                await self.routeToTool(request)
             }
         }
     }
 
     /// Plain conversation: the reply streams into one bubble as it is generated. If the model asks
     /// to look at the photo again ("[LOOK: ...]"), the app runs the vision model and the model then answers.
-    func streamReply(to request: String, using session: ChatSession, allowLook: Bool = true) async {
+    func streamReply(to request: String, allowLook: Bool = true) async {
         let id = UUID()
         feed.append(.assistant(id: id, text: ""))
+        let reply = await generate(request, into: id, allowLook: allowLook)   // the session is released here
+
+        if allowLook, currentPhoto != nil, let question = Self.lookQuestion(in: reply) {
+            feed.removeAll { $0.id == id }
+            await lookAgain(question: question)
+            return
+        }
+        if !reply.isEmpty {
+            transcript.append(Turn(isUser: false, text: reply))
+        }
+    }
+
+    /// Streams one reply into the bubble `id`. Kept separate so the chat session only lives inside
+    /// this call and is released before any model swap.
+    private func generate(_ request: String, into id: UUID, allowLook: Bool) async -> String {
+        guard let session = chatSession else {
+            setAssistantText(id, "The language model isn't loaded.")
+            return ""
+        }
         var reply = ""
         do {
             for try await chunk in session.streamResponse(to: request) {
@@ -291,15 +325,7 @@ final class AgentViewModel: ObservableObject {
             reply += "\n[Error: \(error.localizedDescription)]"
             setAssistantText(id, reply)
         }
-
-        if allowLook, currentPhoto != nil, let question = Self.lookQuestion(in: reply) {
-            feed.removeAll { $0.id == id }
-            await lookAgain(question: question)
-            return
-        }
-        if !reply.isEmpty {
-            transcript.append(Turn(isUser: false, text: reply))
-        }
+        return reply
     }
 
     func setAssistantText(_ id: UUID, _ text: String) {
@@ -364,7 +390,8 @@ final class AgentViewModel: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    private func routeToTool(_ request: String, container: ModelContainer) async {
+    private func routeToTool(_ request: String) async {
+        guard let container else { return }
         do {
             // A fresh session per request: no history, so memory stays flat and answers stay predictable.
             let session = ChatSession(

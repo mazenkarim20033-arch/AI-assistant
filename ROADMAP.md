@@ -30,13 +30,18 @@ and get an explanation from models running on the phone. Original roadmap: uncha
   (Apple's YOLOv3 Core ML model, 80 common types, run on selected frames about 8 times a second; the build
   downloads the model file, it is not in the repository). No ask bar on the camera. **This is detection on
   selected frames, not continuous understanding of the scene.**
-- Photo to chat (Phase 4b/5): a photo (camera or gallery) goes straight into the chat. Steps: object detector +
-  OCR (small, with the language model loaded), then the vision model describes the photo (the language model is
-  unloaded meanwhile, both don't fit in memory together on the iPhone 15), then the language model is reloaded
-  and explains from the labeled notes. Later questions use the saved notes; if they need more detail the
-  language model can request another look with "[LOOK: ...]", which runs the vision model again with that
-  question. Tapping a photo in the chat shows what each tool found. First vision-model use asks before
-  downloading (about 1 to 1.3 GB). Swapping models takes time; the chat shows progress.
+- Photo to chat (Phase 4b/5): a photo (camera or gallery) goes straight into the chat and nothing is written
+  about it; only the small tools (object detector, OCR) run. On the **first question** about the photo, the
+  vision model looks at it with that question in mind (the language model is unloaded meanwhile, both don't
+  fit in memory together on the iPhone 15), then the language model is reloaded and answers from the labeled
+  notes plus its own knowledge (e.g. how to use a device). Later questions use the saved notes; if one needs
+  more detail the language model can request another look with "[LOOK: ...]". Tapping a photo shows what each
+  tool found. First vision-model use asks before downloading (about 1 to 1.3 GB). Swapping models takes
+  time; the chat shows progress. Before the vision model loads the app checks that the language model's
+  memory was actually freed, and skips the look instead of risking a crash.
+- Fixed 2026-11-02: asking about a photo crashed the app because a reference kept the language model in
+  memory while the vision model loaded. Code that runs a request must not hold the model container or session
+  across a model swap.
 - Visual analysis (Phase 4a): the analysis screen runs Apple Vision OCR and whole-image classification on the phone.
   OCR text and classifier labels are shown separately, with the analyzers' own confidences and timings.
   **Not implemented yet:** object detection with locations, continuous (per-frame) live understanding, and the

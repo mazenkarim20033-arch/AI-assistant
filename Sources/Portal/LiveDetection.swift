@@ -125,18 +125,28 @@ struct DetectionOverlay: View {
                 let scale = max(proxy.size.width / imageSize.width, proxy.size.height / imageSize.height)
                 let offsetX = (proxy.size.width - imageSize.width * scale) / 2
                 let offsetY = (proxy.size.height - imageSize.height * scale) / 2
+                let screen = CGRect(origin: .zero, size: proxy.size)
                 ZStack(alignment: .topLeading) {
                     ForEach(boxes) { box in
-                        let frame = CGRect(
+                        let full = CGRect(
                             x: box.rect.minX * imageSize.width * scale + offsetX,
                             y: box.rect.minY * imageSize.height * scale + offsetY,
                             width: box.rect.width * imageSize.width * scale,
                             height: box.rect.height * imageSize.height * scale
                         )
-                        BoxView(label: box.label, confidence: box.confidence)
-                            .frame(width: frame.width, height: frame.height)
-                            .position(x: frame.midX, y: frame.midY)
-                            .opacity(box.missed == 0 ? 1 : 0.5)
+                        // The preview fills the screen and crops the sides, so an object near the edge can
+                        // be partly off-screen. Draw only the visible part, and keep the label on-screen.
+                        let visible = full.intersection(screen)
+                        if !visible.isNull, visible.width > 24, visible.height > 24 {
+                            let text = "\(box.label) \(Int((box.confidence * 100).rounded()))%"
+                            BoxOutline()
+                                .frame(width: visible.width, height: visible.height)
+                                .position(x: visible.midX, y: visible.midY)
+                                .opacity(box.missed == 0 ? 1 : 0.5)
+                            BoxLabel(text: text)
+                                .position(labelCenter(for: visible, text: text, in: proxy.size))
+                                .opacity(box.missed == 0 ? 1 : 0.5)
+                        }
                     }
                 }
                 .animation(.linear(duration: 0.12), value: boxes.map(\.rect))
@@ -144,24 +154,37 @@ struct DetectionOverlay: View {
         }
         .allowsHitTesting(false)
     }
+
+    /// Where to put a label: just inside the box's top-left corner, but never off the screen and
+    /// never under the top bar or the controls.
+    private func labelCenter(for box: CGRect, text: String, in size: CGSize) -> CGPoint {
+        let width = CGFloat(text.count) * 6.6 + 20   // estimated width of the label capsule
+        let height: CGFloat = 22
+        let x = min(max(box.minX + 4 + width / 2, 8 + width / 2), size.width - 8 - width / 2)
+        let y = min(max(box.minY + 4 + height / 2, 96), size.height - 170)
+        return CGPoint(x: x, y: y)
+    }
 }
 
-private struct BoxView: View {
-    let label: String
-    let confidence: Float
+private struct BoxOutline: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(Theme.cyan, lineWidth: 2)
+            .shadow(color: Theme.cyan.opacity(0.6), radius: 6)
+    }
+}
+
+private struct BoxLabel: View {
+    let text: String
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Theme.cyan, lineWidth: 2)
-                .shadow(color: Theme.cyan.opacity(0.6), radius: 6)
-            Text("\(label) \(Int((confidence * 100).rounded()))%")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Theme.cyan, in: Capsule())
-                .offset(x: 4, y: 4)
-        }
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.black)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Theme.cyan, in: Capsule())
     }
 }

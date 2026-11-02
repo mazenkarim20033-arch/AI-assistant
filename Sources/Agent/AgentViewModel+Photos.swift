@@ -1,18 +1,16 @@
+import MLX
 import UIKit
 
 /// How a photo is understood. The tools take turns because the vision model and the language model
 /// don't fit in memory together on an iPhone 15:
-///   1. object detector + text recognition (small, run while the language model stays loaded),
-///   2. the vision model describes the photo (the language model is unloaded for this),
-///   3. the language model is reloaded and explains the photo from all of those notes.
-/// Later questions use the saved notes; if they need more detail the language model can ask for another
-/// look, which runs step 2 again with a specific question.
+///   - When a photo is shared, only the small tools run (object detector, text recognition). Nothing is
+///     written about the photo; it just joins the chat.
+///   - On the first question about it, the vision model looks at the photo with that question in mind
+///     (the language model is unloaded for this), then the language model is reloaded and answers from
+///     the labeled notes plus its own knowledge.
+///   - Later questions use the saved notes. If one needs more detail, the language model can ask for
+///     another look ("[LOOK: ...]"), which repeats the vision step.
 extension AgentViewModel {
-    private static let generalLookQuestion = """
-        Describe this image in detail: the main objects, their colours and positions (left, right, top, bottom), \
-        any buttons, labels, symbols or text, and what the scene is. Be specific and brief, under 120 words.
-        """
-
     /// Called for every photo the user takes or picks.
     func startPhoto(_ image: UIImage) {
         guard !isThinking else {
@@ -29,49 +27,69 @@ extension AgentViewModel {
     private func processPhoto(_ image: UIImage) async {
         feed.append(.image(id: UUID(), image: image))
         let noticeID = UUID()
-        feed.append(.notice(id: noticeID, text: "Detecting objects and reading text…"))
+        feed.append(.notice(id: noticeID, text: "Looking at the photo…"))
         currentPhoto = image
-        photoContext = nil
+        photoNeedsLook = true
 
-        // 1. Small on-device tools.
         let analysis = try? await AppleVisionAnalyzer.analyze(image)
         let objects = await ObjectDetector.detect(image)
         let ocr = analysis?.ocr.text ?? ""
         currentOCR = ocr
-        guard !Task.isCancelled else { setNotice(noticeID, "Stopped."); return }
+        currentObjects = objects
+        currentLabels = analysis?.labels ?? []
+        photoContext = Self.buildContext(objects: objects, labels: currentLabels, ocr: ocr, description: nil)
 
-        // 2. The vision model's description.
+        let names = Array(Set(objects.map(\.label))).sorted().prefix(4).joined(separator: ", ")
+        setNotice(noticeID, names.isEmpty
+            ? "Photo added. Ask me anything about it."
+            : "Photo added · detected: \(names). Ask me anything about it.")
+    }
+
+    /// The first question about a new photo: one look with the vision model aimed at the question,
+    /// then the language model answers.
+    func answerAboutPhoto(_ request: String) async {
+        photoNeedsLook = false
+        guard let image = currentPhoto else {
+            await streamReply(to: request)
+            return
+        }
+
+        let noticeID = UUID()
+        feed.append(.notice(id: noticeID, text: "Looking at your photo…"))
         var description: String?
         if let vision {
-            description = await visionLook(image: image, question: Self.generalLookQuestion, ocr: ocr, noticeID: noticeID, vision: vision)
+            description = await visionLook(
+                image: image,
+                question: Self.targetedLook(for: request),
+                ocr: currentOCR ?? "",
+                noticeID: noticeID,
+                vision: vision
+            )
         }
         guard !Task.isCancelled else { setNotice(noticeID, "Stopped."); return }
 
-        // 3. The language model explains, from the notes.
-        let context = Self.buildContext(objects: objects, labels: analysis?.labels ?? [], ocr: ocr, description: description)
+        let context = Self.buildContext(objects: currentObjects, labels: currentLabels, ocr: currentOCR ?? "", description: description)
         photoContext = context
-        setNotice(noticeID, "Writing the explanation…")
-        guard await ensureLanguageModel(), let session = chatSession else {
+        setNotice(noticeID, description == nil
+            ? "Answering from the object detector and text reading only."
+            : "Looked closely with the vision model.")
+
+        guard await ensureLanguageModel() else {
             setNotice(noticeID, "The language model isn't ready. Tap the status line on Home to load it.")
             return
         }
 
-        var used: [String] = []
-        if !objects.isEmpty { used.append("object detector (\(objects.count))") }
-        if !ocr.isEmpty { used.append("text recognition") }
-        if description != nil { used.append("vision model") }
-        setNotice(noticeID, used.isEmpty ? "No tool found anything clear in this photo." : "Notes from: " + used.joined(separator: ", ") + ". Tap the photo for details.")
-
         let prompt = """
-            The user just shared a photo. You cannot see it. Here is what the app's vision tools found:
+            The user shared a photo and asks: \(request)
 
+            You cannot see the photo. Notes from the app's vision tools:
             \(context)
 
-            Explain what is in the photo in 3 to 5 short sentences. Say which parts are certain and which are \
-            guesses. Then invite the user to ask about anything specific.
+            Answer the question. You may use your general knowledge (for example how this kind of device is \
+            normally used), but keep what the notes show separate from what you assume, and say if you are \
+            unsure or need the model name or more detail.
             """
-        transcript.append(Turn(isUser: true, text: "(shared a photo)"))
-        await streamReply(to: prompt, using: session, allowLook: false)
+        await streamReply(to: prompt, allowLook: false)
     }
 
     /// The language model asked for another look at the photo with a specific question.
@@ -83,7 +101,7 @@ extension AgentViewModel {
         guard !Task.isCancelled else { setNotice(noticeID, "Stopped."); return }
         setNotice(noticeID, answer == nil ? "Couldn't look closer." : "Looked closer with the vision model.")
 
-        guard await ensureLanguageModel(), let session = chatSession else { return }
+        guard await ensureLanguageModel() else { return }
         let followUp: String
         if let answer {
             followUp = """
@@ -96,11 +114,23 @@ extension AgentViewModel {
         } else {
             followUp = "The app could not look closer. Answer the user's last question as well as you can from your notes, and say what you are unsure about."
         }
-        await streamReply(to: followUp, using: session, allowLook: false)
+        await streamReply(to: followUp, allowLook: false)
     }
 
-    /// Runs the vision model on the photo. Returns its answer, or nil if it was skipped or failed.
-    /// The language model is unloaded meanwhile and reloaded afterwards.
+    /// Asks the vision model to describe what is relevant to the user's question. Its job is to report
+    /// what is visible, not to answer; the language model answers.
+    private static func targetedLook(for question: String) -> String {
+        """
+        The user asks: "\(question)". Describe only what is visible in the image that helps answer: what the \
+        object is (its type, and brand or model if readable), its controls such as buttons, switches and ports \
+        with their colours, positions (left, right, top, bottom) and any labels or symbols. Be specific and \
+        brief, under 150 words.
+        """
+    }
+
+    /// Runs the vision model on the photo. Returns its description, or nil if it was skipped or failed.
+    /// The language model is unloaded meanwhile and reloaded afterwards. If the language model's memory
+    /// can't be freed, the look is skipped rather than risking the app being closed.
     private func visionLook(image: UIImage, question: String, ocr: String, noticeID: UUID, vision: VisionModelService) async -> String? {
         if !vision.isReady, !vision.hasDownloaded {
             let proceed = await askDecision(
@@ -113,6 +143,11 @@ extension AgentViewModel {
 
         setNotice(noticeID, vision.hasDownloaded ? "Looking closely…" : "Getting the vision model…")
         suspendForVision()
+        guard await memoryIsFree() else {
+            setNotice(noticeID, "Couldn't free enough memory to look closer.")
+            await resumeAfterVision()
+            return nil
+        }
 
         // Keep the progress line current while the vision model downloads or loads.
         let watcher = Task { @MainActor in
@@ -140,9 +175,22 @@ extension AgentViewModel {
             }
         }
         vision.unload()
+        _ = await memoryIsFree()
         setNotice(noticeID, "Waking the language model…")
         await resumeAfterVision()
         return (text ?? "").isEmpty ? nil : text
+    }
+
+    /// Waits (up to about 3 seconds) until the memory MLX holds has dropped, so the next model can
+    /// load. Returns false if it never did.
+    private func memoryIsFree() async -> Bool {
+        let limit = 700 * 1024 * 1024
+        for _ in 0..<20 {
+            Memory.clearCache()
+            if Memory.activeMemory < limit { return true }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        return Memory.activeMemory < limit
     }
 
     /// Waits for the language model to be ready, loading it if needed.
