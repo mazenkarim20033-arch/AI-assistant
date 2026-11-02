@@ -5,6 +5,7 @@ import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
 import Tokenizers
+import UIKit
 
 /// A tool call shown in the feed as a card: pending -> (confirm) -> running -> done / failed.
 struct ActionCard: Identifiable {
@@ -26,11 +27,14 @@ struct ActionCard: Identifiable {
 enum FeedItem: Identifiable {
     case user(id: UUID, text: String)
     case assistant(id: UUID, text: String)
+    case image(id: UUID, image: UIImage)
+    /// A message from the app itself (not the model), e.g. a capability that isn't connected yet.
+    case notice(id: UUID, text: String)
     case action(ActionCard)
 
     var id: UUID {
         switch self {
-        case .user(let id, _), .assistant(let id, _): return id
+        case .user(let id, _), .assistant(let id, _), .image(let id, _), .notice(let id, _): return id
         case .action(let card): return card.id
         }
     }
@@ -69,6 +73,20 @@ final class AgentViewModel: ObservableObject {
 
     private var selectedModel: ModelOption {
         ModelOption.all.first { $0.id == selectedModelID } ?? ModelOption.all[0]
+    }
+
+    var selectedModelName: String {
+        // "Llama 3.2 3B (best, ~1.9 GB)" -> "Llama 3.2 3B"
+        selectedModel.name.components(separatedBy: " (").first ?? selectedModel.name
+    }
+
+    /// Adds an image to the conversation. Visual analysis isn't connected yet, so say so plainly.
+    func attachImage(_ image: UIImage) {
+        feed.append(.image(id: UUID(), image: image))
+        feed.append(.notice(
+            id: UUID(),
+            text: "Image added to this conversation. Visual analysis isn't connected yet, so PORTAL can't read or describe it. Text actions like notes still work."
+        ))
     }
 
     // MARK: - Model

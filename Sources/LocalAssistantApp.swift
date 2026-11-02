@@ -4,8 +4,7 @@ import SwiftUI
 struct LocalAssistantApp: App {
     var body: some Scene {
         WindowGroup {
-            AgentView()
-                .preferredColorScheme(.dark)
+            PortalRoot()
         }
     }
 }

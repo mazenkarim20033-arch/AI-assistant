@@ -37,7 +37,8 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: Local Assistant
+        CFBundleDisplayName: PORTAL
+        UIUserInterfaceStyle: Dark
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
