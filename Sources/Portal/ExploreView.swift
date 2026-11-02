@@ -5,6 +5,26 @@ import SwiftUI
 struct ExploreView: View {
     @EnvironmentObject var vm: AgentViewModel
     @EnvironmentObject var router: PortalRouter
+    @State private var input = ""
+    @FocusState private var focused: Bool
+
+    private var canSend: Bool {
+        !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Sends the typed request and shows the conversation. If the model isn't loaded yet,
+    /// opens the model sheet and keeps what was typed.
+    private func send() {
+        guard canSend else { return }
+        guard vm.phase == .ready else {
+            router.showModelSheet = true
+            return
+        }
+        vm.submit(input)
+        input = ""
+        focused = false
+        router.tab = .ask
+    }
 
     var body: some View {
         ZStack {
@@ -24,7 +44,9 @@ struct ExploreView: View {
 
                 Spacer()
 
-                PortalOrb(size: 240, thinking: vm.isThinking)
+                // Shrinks while typing so the keyboard doesn't crush the layout.
+                PortalOrb(size: focused ? 120 : 240, thinking: vm.isThinking)
+                    .onTapGesture { focused = false }
 
                 VStack(spacing: Theme.Space.s) {
                     Text(greeting)
@@ -40,6 +62,7 @@ struct ExploreView: View {
                     .padding(.bottom, Theme.Space.s)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: focused)
         .foregroundStyle(.white)
     }
 
@@ -78,20 +101,26 @@ struct ExploreView: View {
     private var interactionBar: some View {
         HStack(spacing: Theme.Space.s) {
             HStack(spacing: 0) {
-                Button { router.tab = .ask } label: {
-                    HStack {
-                        Text("Ask PORTAL…")
-                            .font(Theme.Typeface.body)
-                            .foregroundStyle(Theme.secondaryText)
-                        Spacer()
+                TextField("Ask PORTAL…", text: $input)
+                    .font(Theme.Typeface.body)
+                    .focused($focused)
+                    .submitLabel(.send)
+                    .onSubmit(send)
+                if canSend {
+                    Button(action: send) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Theme.signature)
+                            .frame(width: 36, height: 36)
                     }
-                    .contentShape(Rectangle())
-                }
-                PhotoPickerButton(onPicked: { router.present(image: $0) }) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 18, weight: .light))
-                        .foregroundStyle(Theme.secondaryText)
-                        .frame(width: 36, height: 36)
+                    .accessibilityLabel("Send")
+                } else {
+                    PhotoPickerButton(onPicked: { router.present(image: $0) }) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 18, weight: .light))
+                            .foregroundStyle(Theme.secondaryText)
+                            .frame(width: 36, height: 36)
+                    }
                 }
             }
             .padding(.leading, Theme.Space.m)

@@ -7,18 +7,21 @@ struct PortalRoot: View {
     @State private var keyboardVisible = false
 
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-            content
-                .id(router.tab)
-                .transition(.opacity)
-        }
-        .animation(.easeInOut(duration: 0.25), value: router.tab)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        // The tab bar is a sibling below the content (not an overlay), so screens never sit behind it.
+        VStack(spacing: 0) {
+            ZStack {
+                content
+                    .id(router.tab)
+                    .transition(.opacity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.25), value: router.tab)
+
             if !keyboardVisible {
                 PortalTabBar(selection: $router.tab)
             }
         }
+        .background(Theme.background.ignoresSafeArea())
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
         }
