@@ -26,6 +26,20 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      # Most of the build time is compiling the MLX libraries, which almost never change.
+      # Restore them from the previous run so only the app's own code is rebuilt. Each run saves
+      # a fresh copy (the run id in the key); a cache miss just means a slow, normal build.
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/SourcePackages
+            build/Build/Intermediates.noindex
+          key: xcode-${{ runner.os }}-${{ hashFiles('project.yml') }}-${{ github.run_id }}
+          restore-keys: |
+            xcode-${{ runner.os }}-${{ hashFiles('project.yml') }}-
+            xcode-${{ runner.os }}-
+
       - name: Build (unsigned; Sideloadly signs it later)
         run: |
           set -o pipefail
