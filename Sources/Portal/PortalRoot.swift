@@ -4,6 +4,7 @@ import UIKit
 struct PortalRoot: View {
     @StateObject private var vm = AgentViewModel()
     @StateObject private var router = PortalRouter()
+    @StateObject private var vision = VisionModelService()
     @State private var keyboardVisible = false
 
     var body: some View {
@@ -32,14 +33,15 @@ struct PortalRoot: View {
         .tint(Theme.cyan)
         .environmentObject(vm)
         .environmentObject(router)
+        .environmentObject(vision)
         .fullScreenCover(isPresented: $router.showCamera) {
-            CameraView().environmentObject(router)
+            CameraView().environmentObject(router).environmentObject(vm).environmentObject(vision)
         }
         .sheet(isPresented: $router.showAnalysis) {
             AnalysisView().environmentObject(router).environmentObject(vm)
         }
         .sheet(isPresented: $router.showModelSheet) {
-            ModelSheet().environmentObject(vm)
+            ModelSheet().environmentObject(vm).environmentObject(vision)
         }
         .preferredColorScheme(.dark)
     }

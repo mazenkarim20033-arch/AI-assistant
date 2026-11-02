@@ -59,6 +59,9 @@ final class AgentViewModel: ObservableObject {
     }
 
     private var didAutoLoad = false
+    private var loadEpoch = 0              // bumped to discard a load that finishes after being cancelled
+    private var visionHold = false         // true while a vision model is using the memory
+    private var restoreAfterVision = false
 
     /// Register tools here. With none registered the app is a plain conversation; as soon as one
     /// is added, requests go through the JSON action router below and results appear as cards.
@@ -138,7 +141,31 @@ final class AgentViewModel: ObservableObject {
         var done = false   // only touched on the monitor's serial queue
     }
 
+    /// Frees the language model so a vision model can use the memory (both don't fit together on
+    /// the iPhone 15). Remembers to bring the language model back with `resumeAfterVision`.
+    func suspendForVision() {
+        if phase == .ready { restoreAfterVision = true }
+        if case .loading = phase { restoreAfterVision = true }
+        visionHold = true
+        loadEpoch += 1
+        generation?.cancel()
+        container = nil
+        chatSession = nil
+        isThinking = false
+        phase = .idle
+    }
+
+    func resumeAfterVision() async {
+        visionHold = false
+        guard restoreAfterVision else { return }
+        restoreAfterVision = false
+        await loadModel()
+    }
+
     func loadModel() async {
+        guard !visionHold else { return }
+        loadEpoch += 1
+        let epoch = loadEpoch
         phase = .loading(0)
         // Keep MLX's buffer cache small; iOS kills apps that use too much memory.
         Memory.cacheLimit = 20 * 1024 * 1024
@@ -146,7 +173,8 @@ final class AgentViewModel: ObservableObject {
         let reportProgress: @Sendable (Progress) -> Void = { [weak self] progress in
             let fraction = progress.fractionCompleted
             Task { @MainActor in
-                self?.phase = .loading(fraction)
+                guard let self, self.loadEpoch == epoch else { return }
+                self.phase = .loading(fraction)
             }
         }
         let configuration = selectedModel.configuration
@@ -155,10 +183,12 @@ final class AgentViewModel: ObservableObject {
                 configuration: configuration,
                 progressHandler: reportProgress
             )
+            guard epoch == loadEpoch else { return }   // cancelled while loading (e.g. vision took over)
             container = loaded
             chatSession = makeChatSession(loaded)
             phase = .ready
         } catch {
+            guard epoch == loadEpoch else { return }
             phase = .failed(error.localizedDescription)
         }
     }

@@ -1,9 +1,10 @@
 import AVFoundation
+import CoreImage
 import SwiftUI
 
 /// Owns the capture session: permission, start/stop, and single-photo capture.
 /// Photos are downscaled and handed straight to the caller; nothing is saved to disk.
-final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
+final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     enum Status: Equatable {
         case checking, ready, denied, unavailable
     }
@@ -13,9 +14,17 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     /// Called on the main thread with the captured photo.
     var onCapture: ((UIImage) -> Void)?
 
+    /// Set before `start()` to also keep the most recent video frame available (Live Look).
+    var wantsFrames = false
+
     let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
+    private let frameOutput = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "portal.camera")
+    private let frameQueue = DispatchQueue(label: "portal.camera.frames")
+    private let frameLock = NSLock()
+    private var latestBuffer: CVPixelBuffer?
+    private let ciContext = CIContext()
     private var configured = false
 
     func start() {
@@ -41,6 +50,27 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         queue.async {
             if self.session.isRunning { self.session.stopRunning() }
         }
+        frameLock.lock()
+        latestBuffer = nil
+        frameLock.unlock()
+    }
+
+    /// The newest video frame, downscaled. Only available when `wantsFrames` was set before starting.
+    func latestFrame(maxDimension: CGFloat = 1280) -> UIImage? {
+        frameLock.lock()
+        let buffer = latestBuffer
+        frameLock.unlock()
+        guard let buffer else { return nil }
+        let image = CIImage(cvPixelBuffer: buffer)
+        guard let cgImage = ciContext.createCGImage(image, from: image.extent) else { return nil }
+        return UIImage(cgImage: cgImage).downscaled(maxDimension: maxDimension)
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        frameLock.lock()
+        latestBuffer = buffer
+        frameLock.unlock()
     }
 
     func capture() {
@@ -79,7 +109,7 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     private func configure() -> Bool {
         session.beginConfiguration()
         defer { session.commitConfiguration() }
-        session.sessionPreset = .photo
+        session.sessionPreset = wantsFrames ? .hd1920x1080 : .photo
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input),
@@ -87,6 +117,18 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         else { return false }
         session.addInput(input)
         session.addOutput(output)
+
+        if wantsFrames {
+            frameOutput.alwaysDiscardsLateVideoFrames = true
+            frameOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            if session.canAddOutput(frameOutput) {
+                session.addOutput(frameOutput)
+                frameOutput.setSampleBufferDelegate(self, queue: frameQueue)
+                if let connection = frameOutput.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90   // the app is portrait-only
+                }
+            }
+        }
         configured = true
         return true
     }

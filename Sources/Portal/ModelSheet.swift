@@ -3,6 +3,7 @@ import SwiftUI
 /// Model picker, loader and system status (the details that used to crowd the home screen).
 struct ModelSheet: View {
     @EnvironmentObject var vm: AgentViewModel
+    @EnvironmentObject var vision: VisionModelService
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -17,6 +18,8 @@ struct ModelSheet: View {
                         statusArea
 
                         modelList
+
+                        visionList
 
                         systemList
                     }
@@ -67,12 +70,40 @@ struct ModelSheet: View {
         .portalCard()
     }
 
+    /// The vision model used by the camera's "ask about what you see". Downloads on first use.
+    private var visionList: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            SectionLabel(text: "Vision model (camera)")
+                .padding(.bottom, Theme.Space.xs)
+            ForEach(VisionModelOption.all) { option in
+                Button { vision.selectedID = option.id } label: {
+                    HStack {
+                        Text(option.name).font(Theme.Typeface.secondary)
+                        Spacer()
+                        if vision.selectedID == option.id {
+                            Image(systemName: "checkmark").foregroundStyle(Theme.cyan)
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .foregroundStyle(.white)
+            }
+            Text("Downloads the first time you ask the camera something. Try both and see which you prefer.")
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.secondaryText)
+                .padding(.top, Theme.Space.xs)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .portalCard()
+    }
+
     private var systemList: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "System")
             row("Language model", languageStatus, vm.phase == .ready ? Theme.cyan : Theme.secondaryText)
             row("Text and labels", "Apple Vision · ready", Theme.cyan)
-            row("Vision model", "Not added yet", Theme.secondaryText)
+            row("Vision model", vision.hasDownloaded ? "\(vision.optionName) · downloaded" : "Downloads on first use", vision.hasDownloaded ? Theme.cyan : Theme.secondaryText)
             row("Processing", "On this iPhone, no cloud", Theme.cyan)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
