@@ -157,7 +157,7 @@ struct AnalysisView: View {
             Button {
                 if let image = router.currentImage { vm.attachImage(image) }
                 router.showAnalysis = false
-                router.tab = .ask
+                router.tab = .home
             } label: {
                 Label("Add to conversation", systemImage: "text.bubble")
             }

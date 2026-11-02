@@ -11,10 +11,8 @@ struct PortalTabBar: View {
     }
 
     private let items = [
-        Item(tab: .explore, icon: "viewfinder", label: "Explore"),
-        Item(tab: .ask, icon: "bubble.left.and.bubble.right", label: "Ask"),
+        Item(tab: .home, icon: "sparkles", label: "PORTAL"),
         Item(tab: .discover, icon: "sparkle.magnifyingglass", label: "Discover"),
-        Item(tab: .memory, icon: "brain", label: "Memory"),
     ]
 
     var body: some View {

@@ -47,10 +47,8 @@ struct PortalRoot: View {
     @ViewBuilder
     private var content: some View {
         switch router.tab {
-        case .explore: ExploreView()
-        case .ask: AskView()
+        case .home: HomeView()
         case .discover: DiscoverView()
-        case .memory: MemoryView()
         }
     }
 }

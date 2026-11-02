@@ -24,7 +24,7 @@ If the build fails, open the failed step's log: compiler errors are also listed 
 A free Apple ID's signature lasts **7 days**: reinstall weekly (the app and its downloaded model stay).
 
 ## Layout
-- `Sources/Agent/`: model loading, JSON action loop, tools, notes storage (no UI)
+- `Sources/Agent/`: model loading, streaming chat, tool framework (no tools registered yet) (no UI)
 - `Sources/Vision/`: on-device image analyzers (Apple Vision OCR and classification) and their result types
 - `Sources/Portal/`: screens and design system (`Theme.swift` holds the design tokens)
 - `Sources/Assets.xcassets/`: app icon (1024px source, single-size icon)

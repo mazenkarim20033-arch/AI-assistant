@@ -127,11 +127,11 @@ struct CameraView: View {
 
             Spacer()
 
-            Button { router.showCamera = false; router.tab = .ask } label: {
+            Button { router.showCamera = false; router.tab = .home } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 22))
-                    Text("Ask").font(.caption)
+                    Text("Chat").font(.caption)
                 }
                 .frame(width: 80)
             }

@@ -12,7 +12,7 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 | **4a** | **Local visual intelligence, part 1: OCR and whole-image classification (Apple Vision), shown on the analysis screen with source labels** | **In progress: implemented, awaiting cloud build and on-device test** |
 | 4b | Local visual intelligence, part 2: evaluate and benchmark a vision-language model (SmolVLM2-500M, FastVLM-0.5B via MLXVLM) on the iPhone 15, then integrate the winner | Next, after 4a is validated on the device |
 | 5 | Agent integration: routing, structured outputs, validation, visual context, follow-ups | Planned |
-| 6 | Persistent visual memory and saved discoveries | Planned |
+| 6 | Persistent visual memory and saved discoveries (no Memory tab; design to be decided, keeping the UI minimal) | Planned |
 | 7 | Live visual awareness (throttled frame detection; no live reasoning claims) | Planned |
 | 8 | Optimization and on-device testing (memory, battery, speed, offline) | Planned |
 
@@ -20,7 +20,11 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 
 - Language model: Llama 3.2 3B (4-bit) via MLX Swift. Works on the iPhone 15. Loaded automatically on launch
   (skipped on cellular so a first download never uses mobile data); a different chosen model is remembered.
-- Agent: one validated JSON action per request, executed in Swift. Tools today: save / search / list notes.
+- Chat: one main screen (orb and greeting that turn into the conversation, one input, camera shortcut) plus
+  a Discover tab. The Memory tab and the notes tools were removed on request (they weren't working well).
+  Replies stream from Llama 3.2 3B as a plain conversation.
+- Agent framework: kept, with **no tools registered**. Registering a tool in `AgentViewModel.makeTools()`
+  switches requests to the validated JSON action router, with results shown as action cards in the chat.
 - Camera: live preview, capture and gallery picker work. Captured images are kept in memory only.
 - Visual analysis (Phase 4a): the analysis screen runs Apple Vision OCR and whole-image classification on the phone.
   OCR text and classifier labels are shown separately, with the analyzers' own confidences and timings.

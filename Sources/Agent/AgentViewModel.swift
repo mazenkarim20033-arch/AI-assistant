@@ -60,19 +60,26 @@ final class AgentViewModel: ObservableObject {
 
     private var didAutoLoad = false
 
-    let notes: NoteStore
+    /// Register tools here. With none registered the app is a plain conversation; as soon as one
+    /// is added, requests go through the JSON action router below and results appear as cards.
+    private static func makeTools() -> [any AgentTool] {
+        []
+    }
+
     private let toolList: [any AgentTool]
     private let tools: [String: any AgentTool]
     private var container: ModelContainer?
+    private var chatSession: ChatSession?
+    private var generation: Task<Void, Never>?
+
+    private static let chatPrompt = """
+        You are PORTAL, a friendly assistant running privately on the user's iPhone. \
+        Keep answers short and clear. If you are not sure, say so. \
+        You cannot see images or use other apps yet, so do not pretend to.
+        """
 
     init() {
-        let store = NoteStore()
-        let all: [any AgentTool] = [
-            SaveNoteTool(store: store),
-            SearchNotesTool(store: store),
-            ListNotesTool(store: store),
-        ]
-        notes = store
+        let all = Self.makeTools()
         toolList = all
         tools = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
 
@@ -96,7 +103,7 @@ final class AgentViewModel: ObservableObject {
         feed.append(.image(id: UUID(), image: image))
         feed.append(.notice(
             id: UUID(),
-            text: "Image added. The text and labels found in it are on the analysis screen, but PORTAL's language model can't use them yet. Text actions like notes still work."
+            text: "Image added. The text and labels found in it are on the analysis screen, but PORTAL's language model can't use them yet."
         ))
     }
 
@@ -144,10 +151,12 @@ final class AgentViewModel: ObservableObject {
         }
         let configuration = selectedModel.configuration
         do {
-            container = try await #huggingFaceLoadModelContainer(
+            let loaded = try await #huggingFaceLoadModelContainer(
                 configuration: configuration,
                 progressHandler: reportProgress
             )
+            container = loaded
+            chatSession = makeChatSession(loaded)
             phase = .ready
         } catch {
             phase = .failed(error.localizedDescription)
@@ -156,19 +165,78 @@ final class AgentViewModel: ObservableObject {
 
     /// Back to the setup screen to pick another model. Drops the loaded model to free memory.
     func unloadModel() {
+        generation?.cancel()
         container = nil
+        chatSession = nil
         isThinking = false
         phase = .idle
     }
 
-    func clearFeed() {
-        feed = []
+    /// maxKVSize keeps the conversation memory bounded, so a long chat can't grow without limit.
+    private func makeChatSession(_ container: ModelContainer) -> ChatSession {
+        ChatSession(
+            container,
+            instructions: Self.chatPrompt,
+            generateParameters: GenerateParameters(maxTokens: 512, maxKVSize: 2048, temperature: 0.6)
+        )
     }
 
-    // MARK: - Agent loop
+    func newConversation() {
+        generation?.cancel()
+        feed = []
+        isThinking = false
+        let session = chatSession
+        Task { await session?.clear() }
+    }
+
+    func stopGenerating() {
+        generation?.cancel()
+    }
+
+    // MARK: - Requests
+
+    func submit(_ text: String) {
+        let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let container, !request.isEmpty, !isThinking else { return }
+        feed.append(.user(id: UUID(), text: request))
+        isThinking = true
+        generation = Task {
+            defer { isThinking = false }
+            if self.toolList.isEmpty, let session = self.chatSession {
+                await self.streamReply(to: request, using: session)
+            } else {
+                await routeToTool(request, container: container)
+            }
+        }
+    }
+
+    /// Plain conversation: the reply streams into one bubble as it is generated.
+    private func streamReply(to request: String, using session: ChatSession) async {
+        let id = UUID()
+        feed.append(.assistant(id: id, text: ""))
+        var reply = ""
+        do {
+            for try await chunk in session.streamResponse(to: request) {
+                reply += chunk
+                setAssistantText(id, reply)
+            }
+        } catch is CancellationError {
+            // stopped by the user
+        } catch {
+            reply += "\n[Error: \(error.localizedDescription)]"
+            setAssistantText(id, reply)
+        }
+    }
+
+    private func setAssistantText(_ id: UUID, _ text: String) {
+        guard let index = feed.firstIndex(where: { $0.id == id }) else { return }
+        feed[index] = .assistant(id: id, text: text)
+    }
+
+    // MARK: - Tool routing (used once tools are registered)
 
     /// The model's whole job: turn the request into one JSON action.
-    private var systemPrompt: String {
+    private var routerPrompt: String {
         var lines = [
             "You control a phone assistant. Turn the user's message into exactly ONE action.",
             "Answer with ONLY a single JSON object and nothing else.",
@@ -189,25 +257,18 @@ final class AgentViewModel: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    func submit(_ text: String) {
-        let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let container, !request.isEmpty, !isThinking else { return }
-        feed.append(.user(id: UUID(), text: request))
-        isThinking = true
-        Task {
-            defer { isThinking = false }
-            do {
-                // A fresh session per request: no history, so memory stays flat and answers stay predictable.
-                let session = ChatSession(
-                    container,
-                    instructions: systemPrompt,
-                    generateParameters: GenerateParameters(maxTokens: 160, maxKVSize: 2048, temperature: 0.1)
-                )
-                let raw = try await session.respond(to: request)
-                handle(raw)
-            } catch {
-                feed.append(.assistant(id: UUID(), text: "Error: \(error.localizedDescription)"))
-            }
+    private func routeToTool(_ request: String, container: ModelContainer) async {
+        do {
+            // A fresh session per request: no history, so memory stays flat and answers stay predictable.
+            let session = ChatSession(
+                container,
+                instructions: routerPrompt,
+                generateParameters: GenerateParameters(maxTokens: 160, maxKVSize: 2048, temperature: 0.1)
+            )
+            let raw = try await session.respond(to: request)
+            handle(raw)
+        } catch {
+            feed.append(.assistant(id: UUID(), text: "Error: \(error.localizedDescription)"))
         }
     }
 

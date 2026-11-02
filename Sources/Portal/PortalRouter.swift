@@ -6,10 +6,10 @@ import SwiftUI
 @MainActor
 final class PortalRouter: ObservableObject {
     enum Tab: Hashable {
-        case explore, ask, discover, memory
+        case home, discover
     }
 
-    @Published var tab: Tab = .explore
+    @Published var tab: Tab = .home
     @Published var showCamera = false
     @Published var showAnalysis = false
     @Published var showModelSheet = false
