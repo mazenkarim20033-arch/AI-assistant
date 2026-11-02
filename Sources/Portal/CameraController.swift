@@ -14,8 +14,10 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     /// Called on the main thread with the captured photo.
     var onCapture: ((UIImage) -> Void)?
 
-    /// Set before `start()` to also keep the most recent video frame available (Live Look).
+    /// Set before `start()` to also receive live video frames.
     var wantsFrames = false
+    /// Called on the frame queue for every frame (e.g. to run object detection).
+    var frameHandler: ((CVPixelBuffer) -> Void)?
 
     let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
@@ -71,6 +73,7 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         frameLock.lock()
         latestBuffer = buffer
         frameLock.unlock()
+        frameHandler?(buffer)
     }
 
     func capture() {

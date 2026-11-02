@@ -24,6 +24,10 @@ struct PortalRoot: View {
         }
         .background(Theme.background.ignoresSafeArea())
         .task { await vm.autoLoad() }
+        .onAppear {
+            vm.vision = vision
+            router.onPhoto = { image in vm.startPhoto(image) }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
         }
@@ -35,7 +39,7 @@ struct PortalRoot: View {
         .environmentObject(router)
         .environmentObject(vision)
         .fullScreenCover(isPresented: $router.showCamera) {
-            CameraView().environmentObject(router).environmentObject(vm).environmentObject(vision)
+            CameraView().environmentObject(router)
         }
         .sheet(isPresented: $router.showAnalysis) {
             AnalysisView().environmentObject(router).environmentObject(vm)

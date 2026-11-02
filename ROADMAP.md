@@ -10,7 +10,7 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 | 3 | Camera integration: permission, live preview, photo capture, gallery selection | Complete (confirmed by owner) |
 | - | Visual refinement and branding (minimal design system, home screen, app icon) | Complete (cloud build #10 passed; on-device look to be confirmed by owner) |
 | **4a** | **Local visual intelligence, part 1: OCR and whole-image classification (Apple Vision), shown on the analysis screen with source labels** | **In progress: implemented, awaiting cloud build and on-device test** |
-| 4b | Local visual intelligence, part 2: vision-language model via MLXVLM. **Live Look**: ask about what the camera sees (Qwen2-VL 2B or SmolVLM2 500M, switchable and timed on the phone so they can be compared) | In progress: implemented, awaiting cloud build and on-device test |
+| 4b | Local visual intelligence, part 2: live object detection on the camera (Apple YOLOv3, boxes + names), and a vision model (Qwen2-VL 2B or SmolVLM2 500M via MLXVLM) that works with Llama 3B to explain photos in the chat | In progress: implemented, awaiting cloud build and on-device test |
 | 5 | Agent integration: routing, structured outputs, validation, visual context, follow-ups | Planned |
 | 6 | Persistent visual memory and saved discoveries (no Memory tab; design to be decided, keeping the UI minimal) | Planned |
 | 7 | Live visual awareness (throttled frame detection; no live reasoning claims) | Planned |
@@ -26,12 +26,17 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 - Agent framework: kept, with **no tools registered**. Registering a tool in `AgentViewModel.makeTools()`
   switches requests to the validated JSON action router, with results shown as action cards in the chat.
 - Camera: live preview, capture and gallery picker work. Captured images are kept in memory only.
-- Live Look (Phase 4b, camera screen): live preview; each question captures one frame (plus Apple Vision OCR text)
-  and a vision model answers about it; after the first question the frame is held so follow-ups reason about
-  the same image; "look again" returns to live. **This is not continuous real-time understanding**: answers take
-  seconds and are based on the frame captured when you ask. The language model is unloaded while the camera is
-  open (both models don't fit in memory together) and reloaded when it closes. First use downloads the vision
-  model (about 1 to 1.3 GB) after asking the user. Answers are labeled VISION MODEL (can be wrong).
+- Camera (Phase 4b): live preview with an object detector drawing a box and name around each recognized object
+  (Apple's YOLOv3 Core ML model, 80 common types, run on selected frames about 8 times a second; the build
+  downloads the model file, it is not in the repository). No ask bar on the camera. **This is detection on
+  selected frames, not continuous understanding of the scene.**
+- Photo to chat (Phase 4b/5): a photo (camera or gallery) goes straight into the chat. Steps: object detector +
+  OCR (small, with the language model loaded), then the vision model describes the photo (the language model is
+  unloaded meanwhile, both don't fit in memory together on the iPhone 15), then the language model is reloaded
+  and explains from the labeled notes. Later questions use the saved notes; if they need more detail the
+  language model can request another look with "[LOOK: ...]", which runs the vision model again with that
+  question. Tapping a photo in the chat shows what each tool found. First vision-model use asks before
+  downloading (about 1 to 1.3 GB). Swapping models takes time; the chat shows progress.
 - Visual analysis (Phase 4a): the analysis screen runs Apple Vision OCR and whole-image classification on the phone.
   OCR text and classifier labels are shown separately, with the analyzers' own confidences and timings.
   **Not implemented yet:** object detection with locations, continuous (per-frame) live understanding, and the

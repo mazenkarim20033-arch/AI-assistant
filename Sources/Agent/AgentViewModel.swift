@@ -8,7 +8,8 @@ import Network
 import Tokenizers
 import UIKit
 
-/// A tool call shown in the feed as a card: pending -> (confirm) -> running -> done / failed.
+/// A card in the conversation: a tool action, or a question the app asks the user (e.g. a download).
+/// pending -> (confirm) -> running -> done / failed.
 struct ActionCard: Identifiable {
     enum State {
         case pending
@@ -23,13 +24,15 @@ struct ActionCard: Identifiable {
     let title: String
     let args: [String: String]
     var state: State
+    var confirmLabel = "Confirm"
+    var cancelLabel = "Cancel"
 }
 
 enum FeedItem: Identifiable {
     case user(id: UUID, text: String)
     case assistant(id: UUID, text: String)
     case image(id: UUID, image: UIImage)
-    /// A message from the app itself (not the model), e.g. a capability that isn't connected yet.
+    /// A message from the app itself (not the model): progress, or what a tool used.
     case notice(id: UUID, text: String)
     case action(ActionCard)
 
@@ -39,6 +42,13 @@ enum FeedItem: Identifiable {
         case .action(let card): return card.id
         }
     }
+}
+
+/// One turn of the conversation, kept so the language model can be reloaded (it is unloaded while
+/// the vision model runs) without forgetting what was said.
+struct Turn {
+    let isUser: Bool
+    let text: String
 }
 
 @MainActor
@@ -71,14 +81,27 @@ final class AgentViewModel: ObservableObject {
 
     private let toolList: [any AgentTool]
     private let tools: [String: any AgentTool]
-    private var container: ModelContainer?
-    private var chatSession: ChatSession?
-    private var generation: Task<Void, Never>?
 
-    private static let chatPrompt = """
+    // Shared with the photo pipeline (AgentViewModel+Photos.swift).
+    var container: ModelContainer?
+    var chatSession: ChatSession?
+    var generation: Task<Void, Never>?
+    var vision: VisionModelService?
+    var transcript: [Turn] = []
+    var currentPhoto: UIImage?
+    var currentOCR: String?
+    var photoContext: String?
+    private var decisions: [UUID: CheckedContinuation<Bool, Never>] = [:]
+
+    static let chatPrompt = """
         You are PORTAL, a friendly assistant running privately on the user's iPhone. \
         Keep answers short and clear. If you are not sure, say so. \
-        You cannot see images or use other apps yet, so do not pretend to.
+        You cannot see images yourself. When the user shares a photo, the app gives you notes from its \
+        vision tools (an object detector, text recognition and a vision model). Treat the notes as \
+        evidence, not certain fact: say which parts are certain and which are guesses. \
+        If the user asks about a detail of a shared photo that the notes do not cover, reply with exactly \
+        [LOOK: <a specific question about the photo>] and nothing else; the app will look again and give you \
+        the answer. Do this at most once per question, and never when no photo was shared.
         """
 
     init() {
@@ -99,15 +122,6 @@ final class AgentViewModel: ObservableObject {
     var selectedModelName: String {
         // "Llama 3.2 3B (best, ~1.9 GB)" -> "Llama 3.2 3B"
         selectedModel.name.components(separatedBy: " (").first ?? selectedModel.name
-    }
-
-    /// Adds an image to the conversation. The language model can't use the image yet, so say so plainly.
-    func attachImage(_ image: UIImage) {
-        feed.append(.image(id: UUID(), image: image))
-        feed.append(.notice(
-            id: UUID(),
-            text: "Image added. The text and labels found in it are on the analysis screen, but PORTAL's language model can't use them yet."
-        ))
     }
 
     // MARK: - Model
@@ -148,10 +162,8 @@ final class AgentViewModel: ObservableObject {
         if case .loading = phase { restoreAfterVision = true }
         visionHold = true
         loadEpoch += 1
-        generation?.cancel()
         container = nil
         chatSession = nil
-        isThinking = false
         phase = .idle
     }
 
@@ -202,25 +214,42 @@ final class AgentViewModel: ObservableObject {
         phase = .idle
     }
 
-    /// maxKVSize keeps the conversation memory bounded, so a long chat can't grow without limit.
+    /// A new session starts from the saved notes and recent conversation, so reloading the model
+    /// (after the vision model ran) doesn't make it forget. maxKVSize keeps memory bounded.
     private func makeChatSession(_ container: ModelContainer) -> ChatSession {
-        ChatSession(
+        var instructions = Self.chatPrompt
+        if let photoContext {
+            instructions += "\n\nNotes from the photo the user shared:\n\(photoContext)"
+        }
+        let recent = transcript.suffix(6)
+        if !recent.isEmpty {
+            let lines = recent.map { ($0.isUser ? "User: " : "PORTAL: ") + String($0.text.prefix(400)) }
+            instructions += "\n\nConversation so far:\n" + lines.joined(separator: "\n")
+        }
+        return ChatSession(
             container,
-            instructions: Self.chatPrompt,
+            instructions: instructions,
             generateParameters: GenerateParameters(maxTokens: 512, maxKVSize: 2048, temperature: 0.6)
         )
     }
 
     func newConversation() {
         generation?.cancel()
+        resolveDecisions(false)
         feed = []
+        transcript = []
+        currentPhoto = nil
+        currentOCR = nil
+        photoContext = nil
         isThinking = false
-        let session = chatSession
-        Task { await session?.clear() }
+        if let container {
+            chatSession = makeChatSession(container)
+        }
     }
 
     func stopGenerating() {
         generation?.cancel()
+        resolveDecisions(false)
     }
 
     // MARK: - Requests
@@ -229,26 +258,32 @@ final class AgentViewModel: ObservableObject {
         let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let container, !request.isEmpty, !isThinking else { return }
         feed.append(.user(id: UUID(), text: request))
+        transcript.append(Turn(isUser: true, text: request))
         isThinking = true
         generation = Task {
             defer { isThinking = false }
             if self.toolList.isEmpty, let session = self.chatSession {
                 await self.streamReply(to: request, using: session)
             } else {
-                await routeToTool(request, container: container)
+                await self.routeToTool(request, container: container)
             }
         }
     }
 
-    /// Plain conversation: the reply streams into one bubble as it is generated.
-    private func streamReply(to request: String, using session: ChatSession) async {
+    /// Plain conversation: the reply streams into one bubble as it is generated. If the model asks
+    /// to look at the photo again ("[LOOK: ...]"), the app runs the vision model and the model then answers.
+    func streamReply(to request: String, using session: ChatSession, allowLook: Bool = true) async {
         let id = UUID()
         feed.append(.assistant(id: id, text: ""))
         var reply = ""
         do {
             for try await chunk in session.streamResponse(to: request) {
                 reply += chunk
-                setAssistantText(id, reply)
+                if allowLook, currentPhoto != nil, reply.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[LOOK") {
+                    setAssistantText(id, "")   // hide the raw request
+                } else {
+                    setAssistantText(id, reply)
+                }
             }
         } catch is CancellationError {
             // stopped by the user
@@ -256,11 +291,53 @@ final class AgentViewModel: ObservableObject {
             reply += "\n[Error: \(error.localizedDescription)]"
             setAssistantText(id, reply)
         }
+
+        if allowLook, currentPhoto != nil, let question = Self.lookQuestion(in: reply) {
+            feed.removeAll { $0.id == id }
+            await lookAgain(question: question)
+            return
+        }
+        if !reply.isEmpty {
+            transcript.append(Turn(isUser: false, text: reply))
+        }
     }
 
-    private func setAssistantText(_ id: UUID, _ text: String) {
+    func setAssistantText(_ id: UUID, _ text: String) {
         guard let index = feed.firstIndex(where: { $0.id == id }) else { return }
         feed[index] = .assistant(id: id, text: text)
+    }
+
+    func setNotice(_ id: UUID, _ text: String) {
+        guard let index = feed.firstIndex(where: { $0.id == id }) else { return }
+        feed[index] = .notice(id: id, text: text)
+    }
+
+    private static func lookQuestion(in text: String) -> String? {
+        guard let start = text.range(of: "[LOOK:") else { return nil }
+        let rest = text[start.upperBound...]
+        let end = rest.firstIndex(of: "]") ?? rest.endIndex
+        let question = rest[..<end].trimmingCharacters(in: .whitespacesAndNewlines)
+        return question.isEmpty ? nil : question
+    }
+
+    // MARK: - Questions to the user (e.g. "download the vision model?")
+
+    /// Shows a card with two buttons and waits for the answer.
+    func askDecision(_ title: String, confirm: String, cancel: String) async -> Bool {
+        let card = ActionCard(toolName: "decision", title: title, args: [:], state: .pending, confirmLabel: confirm, cancelLabel: cancel)
+        feed.append(.action(card))
+        return await withCheckedContinuation { continuation in
+            decisions[card.id] = continuation
+        }
+    }
+
+    private func resolveDecisions(_ value: Bool) {
+        let pending = decisions
+        decisions = [:]
+        for (id, continuation) in pending {
+            update(id) { $0.state = .cancelled }
+            continuation.resume(returning: value)
+        }
     }
 
     // MARK: - Tool routing (used once tools are registered)
@@ -331,11 +408,17 @@ final class AgentViewModel: ObservableObject {
     // MARK: - Action cards
 
     func confirm(_ id: UUID) {
+        if let continuation = decisions.removeValue(forKey: id) {
+            update(id) { $0.state = .done("OK") }
+            continuation.resume(returning: true)
+            return
+        }
         Task { await run(id) }
     }
 
     func cancel(_ id: UUID) {
         update(id) { $0.state = .cancelled }
+        decisions.removeValue(forKey: id)?.resume(returning: false)
     }
 
     private func run(_ id: UUID) async {
@@ -356,7 +439,7 @@ final class AgentViewModel: ObservableObject {
         return nil
     }
 
-    private func update(_ id: UUID, _ change: (inout ActionCard) -> Void) {
+    func update(_ id: UUID, _ change: (inout ActionCard) -> Void) {
         for index in feed.indices {
             if case .action(var card) = feed[index], card.id == id {
                 change(&card)

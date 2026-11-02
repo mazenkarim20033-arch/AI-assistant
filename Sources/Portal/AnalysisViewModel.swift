@@ -1,12 +1,12 @@
 import UIKit
 
-/// Runs the on-device analyzers for the image on the analysis screen and holds their results.
+/// Runs the on-device analyzers for the image on the details sheet and holds their results.
 @MainActor
 final class AnalysisViewModel: ObservableObject {
     enum State {
         case idle
         case running
-        case done(ImageAnalysis)
+        case done(ImageAnalysis, [ObjectDetector.Detection])
         case failed(String)
     }
 
@@ -20,8 +20,9 @@ final class AnalysisViewModel: ObservableObject {
         state = .running
         do {
             let result = try await AppleVisionAnalyzer.analyze(image)
+            let objects = await ObjectDetector.detect(image)
             guard analyzedToken == token else { return }   // a newer image replaced this one
-            state = .done(result)
+            state = .done(result, objects)
         } catch {
             guard analyzedToken == token else { return }
             state = .failed(error.localizedDescription)

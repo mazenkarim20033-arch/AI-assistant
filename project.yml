@@ -51,6 +51,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mazen.localassistant
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COREML_CODEGEN_LANGUAGE: None   # the model is loaded from the bundle at runtime, no generated class
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.1.0"

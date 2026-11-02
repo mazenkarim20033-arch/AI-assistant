@@ -1,27 +1,13 @@
 import SwiftUI
 
-/// The camera, full screen. Two things from one place:
-/// - the white button takes a photo (opens the analysis screen),
-/// - the ask bar asks about what the camera sees right now (Live Look).
-/// The preview is live; each answer is based on one frame captured when you ask.
+/// The camera, full screen. It shows what it can find in the live view: a box and a name around each
+/// object the on-device detector recognizes. The white button takes a photo and sends it to the chat,
+/// where the vision and language models work together to explain it. The detector knows 80 common
+/// object types; it is detection on selected frames, not continuous understanding of the scene.
 struct CameraView: View {
     @EnvironmentObject var router: PortalRouter
-    @EnvironmentObject var vm: AgentViewModel
-    @EnvironmentObject var vision: VisionModelService
     @StateObject private var camera = CameraController()
-    @StateObject private var live = LiveLookViewModel()
-    @State private var input = ""
-    @FocusState private var focused: Bool
-
-    private var canSend: Bool {
-        !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func send() {
-        guard canSend else { return }
-        live.ask(input, camera: camera, vision: vision, language: vm)
-        input = ""
-    }
+    @StateObject private var detection = LiveDetectionModel()
 
     var body: some View {
         ZStack {
@@ -31,18 +17,19 @@ struct CameraView: View {
             VStack(spacing: 0) {
                 topBar
                 Spacer()
-                bottomPanel
+                controls
             }
         }
         .foregroundStyle(.white)
         .onAppear {
             camera.wantsFrames = true
             camera.onCapture = { image in router.present(image: image) }
+            camera.frameHandler = { [detection] buffer in detection.handle(buffer) }
             camera.start()
         }
         .onDisappear {
             camera.stop()
-            live.shutdown(vision: vision, language: vm)
+            detection.reset()
         }
     }
 
@@ -52,13 +39,8 @@ struct CameraView: View {
         ZStack {
             switch camera.status {
             case .ready:
-                if let frozen = live.frozen {
-                    Image(uiImage: frozen)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    CameraPreview(session: camera.session)
-                }
+                CameraPreview(session: camera.session)
+                DetectionOverlay(boxes: detection.boxes, imageSize: detection.imageSize)
             case .checking:
                 ProgressView()
             case .denied:
@@ -80,8 +62,8 @@ struct CameraView: View {
             // A soft dark fade behind the controls so they stay readable over any scene.
             VStack {
                 Spacer()
-                LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 340)
+                LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 200)
             }
             .allowsHitTesting(false)
         }
@@ -125,17 +107,7 @@ struct CameraView: View {
             Spacer()
             statusChip
             Spacer()
-            if live.frozen != nil {
-                Button { live.lookAgain(vision: vision) } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .accessibilityLabel("Look again")
-            } else {
-                Color.clear.frame(width: 40, height: 40)
-            }
+            Color.clear.frame(width: 40, height: 40)
         }
         .padding(.horizontal, Theme.Space.m)
         .padding(.top, Theme.Space.xs)
@@ -144,7 +116,7 @@ struct CameraView: View {
     private var statusChip: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(live.frozen == nil ? Theme.cyan : Color.white.opacity(0.6))
+                .fill(detection.isAvailable ? Theme.cyan : Color.white.opacity(0.5))
                 .frame(width: 6, height: 6)
             Text(statusText)
                 .font(.system(size: 12, weight: .medium))
@@ -155,108 +127,28 @@ struct CameraView: View {
     }
 
     private var statusText: String {
-        if case .loading(let fraction) = vision.phase {
-            return fraction < 1 ? "Preparing vision \(Int(fraction * 100))%" : "Preparing vision…"
-        }
-        switch live.state {
-        case .thinking: return "Looking…"
-        case .answering: return "Answering…"
-        case .answered, .failed: return "Held frame"
-        case .live: return live.frozen == nil ? "Live" : "Held frame"
-        }
+        guard detection.isAvailable else { return "Live · detector unavailable" }
+        let visible = detection.boxes.filter { $0.missed == 0 }.count
+        return visible == 0 ? "Live" : (visible == 1 ? "Live · 1 object" : "Live · \(visible) objects")
     }
 
-    // MARK: Bottom
+    // MARK: Controls
 
-    private var bottomPanel: some View {
-        VStack(spacing: Theme.Space.s) {
-            if live.needsConsent {
-                consentCard
-            } else if live.state != .live {
-                answerCard
+    private var controls: some View {
+        HStack {
+            PhotoPickerButton(onPicked: { router.present(image: $0) }) {
+                Image(systemName: "photo")
+                    .font(.system(size: 20, weight: .light))
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial, in: Circle())
             }
-            inputRow
-        }
-        .padding(.horizontal, Theme.Space.m)
-        .padding(.bottom, Theme.Space.s)
-    }
 
-    private var consentCard: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text("One-time download")
-                .font(Theme.Typeface.title)
-            Text("To understand what the camera sees, PORTAL needs a vision model (\(vision.option.size)). It stays on this iPhone. Use Wi-Fi if you can. The language model will pause while the camera is open.")
-                .font(Theme.Typeface.secondary)
-                .foregroundStyle(Theme.secondaryText)
-            HStack(spacing: 10) {
-                Button("Not now") { live.declineDownload() }
-                    .buttonStyle(GhostButtonStyle())
-                Button("Download") {
-                    live.confirmDownload(camera: camera, vision: vision, language: vm)
-                }
-                .buttonStyle(PortalButtonStyle())
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Space.m)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-    }
-
-    private var answerCard: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            ProvenanceBadge(provenance: .vision)
-
-            switch live.state {
-            case .thinking:
-                HStack(spacing: Theme.Space.s) {
-                    ProgressView()
-                    Text(vision.isReady ? "Looking at the frame…" : "Getting the vision model ready…")
-                        .font(Theme.Typeface.secondary)
-                        .foregroundStyle(Theme.secondaryText)
-                }
-            case .failed(let message):
-                Text(message)
-                    .font(Theme.Typeface.secondary)
-                    .foregroundStyle(.red)
-            default:
-                ScrollView {
-                    Text(live.answer)
-                        .font(Theme.Typeface.body)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 190)
-                if live.state == .answered {
-                    Text("\(live.stats). Based on the frame captured when you asked; it can be wrong.")
-                        .font(Theme.Typeface.caption)
-                        .foregroundStyle(Theme.tertiaryText)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Space.m)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-    }
-
-    private var inputRow: some View {
-        HStack(spacing: Theme.Space.s) {
-            HStack(spacing: 0) {
-                TextField(live.frozen == nil ? "Ask about what you see…" : "Ask a follow-up…", text: $input)
-                    .font(Theme.Typeface.body)
-                    .focused($focused)
-                    .submitLabel(.send)
-                    .onSubmit(send)
-                trailingButton
-            }
-            .padding(.leading, Theme.Space.m)
-            .padding(.trailing, Theme.Space.xs)
-            .frame(height: 56)
-            .background(.ultraThinMaterial, in: Capsule())
+            Spacer()
 
             Button { camera.capture() } label: {
                 ZStack {
-                    Circle().strokeBorder(Color.white, lineWidth: 3).frame(width: 56, height: 56)
-                    Circle().fill(Color.white).frame(width: 44, height: 44)
+                    Circle().strokeBorder(Color.white, lineWidth: 3).frame(width: 76, height: 76)
+                    Circle().fill(Color.white).frame(width: 60, height: 60)
                         .scaleEffect(camera.isCapturing ? 0.85 : 1)
                         .animation(.easeOut(duration: 0.15), value: camera.isCapturing)
                 }
@@ -264,35 +156,12 @@ struct CameraView: View {
             .disabled(camera.status != .ready || camera.isCapturing)
             .opacity(camera.status == .ready ? 1 : 0.35)
             .accessibilityLabel("Take photo")
-        }
-    }
 
-    /// Stop while answering, send when there is text, otherwise the photo picker.
-    @ViewBuilder
-    private var trailingButton: some View {
-        if live.isBusy {
-            Button { live.stop() } label: {
-                Image(systemName: "stop.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 36, height: 36)
-            }
-            .accessibilityLabel("Stop")
-        } else if canSend {
-            Button(action: send) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(Theme.signature)
-                    .frame(width: 36, height: 36)
-            }
-            .accessibilityLabel("Send")
-        } else {
-            PhotoPickerButton(onPicked: { router.present(image: $0) }) {
-                Image(systemName: "photo")
-                    .font(.system(size: 18, weight: .light))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 36, height: 36)
-            }
+            Spacer()
+
+            Color.clear.frame(width: 52, height: 52)
         }
+        .padding(.horizontal, Theme.Space.l)
+        .padding(.bottom, Theme.Space.m)
     }
 }

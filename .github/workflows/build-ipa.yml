@@ -23,6 +23,16 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      # Apple's published YOLOv3 object detector (80 everyday object types). Downloaded here so the
+      # 124 MB file isn't stored in the repository; Xcode compiles it into the app.
+      # Swap to YOLOv3TinyFP16 (17 MB, faster, less accurate) by changing the URL.
+      - name: Download object detection model
+        run: |
+          mkdir -p Sources/Models
+          curl -fL --retry 3 -o Sources/Models/YOLOv3Detector.mlmodel \
+            https://ml-assets.apple.com/coreml/models/Image/ObjectDetection/YOLOv3/YOLOv3FP16.mlmodel
+          ls -l Sources/Models
+
       - name: Generate Xcode project
         run: xcodegen generate
 

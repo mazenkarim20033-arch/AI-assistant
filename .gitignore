@@ -4,3 +4,4 @@ build/
 Payload/
 .DS_Store
 *.zip
+Sources/Models/

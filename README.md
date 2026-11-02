@@ -23,6 +23,11 @@ If the build fails, open the failed step's log: compiler errors are also listed 
 
 A free Apple ID's signature lasts **7 days**: reinstall weekly (the app and its downloaded model stay).
 
+## Object detection model
+The camera's object detector is Apple's published YOLOv3 (Core ML, based on the darknet YOLOv3 research by
+Redmon and Farhadi). The build workflow downloads it from Apple's model gallery
+(`ml-assets.apple.com`) into `Sources/Models/` (git-ignored). Check the model's terms before redistributing the app.
+
 ## Layout
 - `Sources/Agent/`: model loading, streaming chat, tool framework (no tools registered yet) (no UI)
 - `Sources/Vision/`: on-device image analyzers (Apple Vision OCR and classification), the vision-language

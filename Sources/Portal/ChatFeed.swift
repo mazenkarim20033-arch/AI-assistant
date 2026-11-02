@@ -4,6 +4,7 @@ import SwiftUI
 /// so adding a capability never needs a new screen.
 struct FeedRow: View {
     let item: FeedItem
+    @EnvironmentObject var router: PortalRouter
 
     var body: some View {
         switch item {
@@ -32,6 +33,7 @@ struct FeedRow: View {
                     .scaledToFit()
                     .frame(maxHeight: 220)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small + 4, style: .continuous))
+                    .onTapGesture { router.showDetails(for: image) }   // what each tool found
             }
         case .notice(_, let text):
             Text(text)
@@ -63,9 +65,9 @@ struct ActionCardView: View {
             switch card.state {
             case .pending:
                 HStack(spacing: 10) {
-                    Button("Cancel") { vm.cancel(card.id) }
+                    Button(card.cancelLabel) { vm.cancel(card.id) }
                         .buttonStyle(GhostButtonStyle())
-                    Button("Confirm") { vm.confirm(card.id) }
+                    Button(card.confirmLabel) { vm.confirm(card.id) }
                         .buttonStyle(PortalButtonStyle())
                 }
             case .running:

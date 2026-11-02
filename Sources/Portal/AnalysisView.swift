@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Shows the chosen image and what the on-device analyzers found in it. Every section is
-/// labeled with its source, and OCR text is kept separate from classifier labels.
+/// What each on-device tool found in a photo from the chat. Every section is labeled with its
+/// source, and OCR text is kept separate from detected objects and classifier labels.
+/// (The vision model's description and the language model's explanation appear in the chat.)
 struct AnalysisView: View {
-    @EnvironmentObject var vm: AgentViewModel
     @EnvironmentObject var router: PortalRouter
     @StateObject private var model = AnalysisViewModel()
 
@@ -15,12 +15,11 @@ struct AnalysisView: View {
                     VStack(alignment: .leading, spacing: Theme.Space.l) {
                         imageCard
                         results
-                        actions
                     }
                     .padding(Theme.Space.m)
                 }
             }
-            .navigationTitle("Analysis")
+            .navigationTitle("Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -63,13 +62,37 @@ struct AnalysisView: View {
             Text("Analysis failed: \(message)")
                 .font(Theme.Typeface.secondary)
                 .foregroundStyle(.red)
-        case .done(let analysis):
+        case .done(let analysis, let objects):
             VStack(alignment: .leading, spacing: Theme.Space.l) {
+                objectSection(objects)
                 textSection(analysis.ocr)
                 labelSection(analysis.labels)
                 footer(analysis)
             }
         }
+    }
+
+    private func objectSection(_ objects: [ObjectDetector.Detection]) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            ProvenanceBadge(provenance: .detected)
+            Text("Objects found by the on-device detector. It knows 80 common types and can miss or misname things.")
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.secondaryText)
+            if objects.isEmpty {
+                Text(ObjectDetector.shared.isAvailable ? "No known objects found." : "The detector isn't available in this build.")
+                    .font(Theme.Typeface.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(objects.sorted(by: { $0.confidence > $1.confidence })) { object in
+                        barRow(name: object.label.capitalized, confidence: object.confidence)
+                    }
+                }
+                .padding(.top, Theme.Space.xs)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .portalCard()
     }
 
     private func textSection(_ ocr: OCRResult) -> some View {
@@ -100,7 +123,7 @@ struct AnalysisView: View {
     private func labelSection(_ labels: [ClassificationLabel]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             ProvenanceBadge(provenance: .detected)
-            Text("Labels for the whole image from an on-device classifier. They say what it looks like, not where things are.")
+            Text("Scene labels for the whole image from an on-device classifier. They say what it looks like, not where things are.")
                 .font(Theme.Typeface.caption)
                 .foregroundStyle(Theme.secondaryText)
             if labels.isEmpty {
@@ -110,7 +133,7 @@ struct AnalysisView: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(labels) { label in
-                        labelRow(label)
+                        barRow(name: label.name, confidence: label.confidence)
                     }
                 }
                 .padding(.top, Theme.Space.xs)
@@ -120,12 +143,12 @@ struct AnalysisView: View {
         .portalCard()
     }
 
-    private func labelRow(_ label: ClassificationLabel) -> some View {
+    private func barRow(name: String, confidence: Float) -> some View {
         VStack(spacing: 6) {
             HStack {
-                Text(label.name).font(Theme.Typeface.secondary)
+                Text(name).font(Theme.Typeface.secondary)
                 Spacer()
-                Text("\(Int((label.confidence * 100).rounded()))%")
+                Text("\(Int((confidence * 100).rounded()))%")
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.secondaryText)
             }
@@ -136,45 +159,15 @@ struct AnalysisView: View {
                     GeometryReader { proxy in
                         Capsule()
                             .fill(Theme.signature)
-                            .frame(width: proxy.size.width * CGFloat(label.confidence))
+                            .frame(width: proxy.size.width * CGFloat(confidence))
                     }
                 }
         }
     }
 
     private func footer(_ analysis: ImageAnalysis) -> some View {
-        Text("Analyzed on this iPhone in \(seconds(analysis.totalSeconds)) (text \(seconds(analysis.ocrSeconds)), labels \(seconds(analysis.labelSeconds))). A vision model and PORTAL's explanations are not connected yet.")
+        Text("Analyzed on this iPhone in \(String(format: "%.2f s", analysis.totalSeconds)) (text and labels). The vision model's description and the explanation are in the chat.")
             .font(Theme.Typeface.caption)
             .foregroundStyle(Theme.tertiaryText)
-    }
-
-    private func seconds(_ value: Double) -> String {
-        String(format: "%.2f s", value)
-    }
-
-    private var actions: some View {
-        VStack(spacing: Theme.Space.s) {
-            Button {
-                if let image = router.currentImage { vm.attachImage(image) }
-                router.showAnalysis = false
-                router.tab = .home
-            } label: {
-                Label("Add to conversation", systemImage: "text.bubble")
-            }
-            .buttonStyle(PortalButtonStyle())
-
-            HStack(spacing: Theme.Space.s) {
-                Button { router.reopenCamera() } label: {
-                    Label("Retake", systemImage: "camera")
-                }
-                .buttonStyle(GhostButtonStyle())
-
-                PhotoPickerButton(onPicked: { router.setImage($0) }) {
-                    Label("Choose another", systemImage: "photo")
-                }
-                .buttonStyle(GhostButtonStyle())
-            }
-        }
-        .frame(maxWidth: .infinity)
     }
 }
