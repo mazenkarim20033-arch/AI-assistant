@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Home screen: the orb, the camera button, and an honest status readout.
+/// Home: the orb, a short greeting, one place to ask, and a camera shortcut.
+/// Everything else (model, status) lives one tap away behind the status line.
 struct ExploreView: View {
     @EnvironmentObject var vm: AgentViewModel
     @EnvironmentObject var router: PortalRouter
@@ -9,103 +10,104 @@ struct ExploreView: View {
         ZStack {
             Theme.background.ignoresSafeArea()
             RadialGradient(
-                colors: [Theme.violet.opacity(0.22), .clear],
-                center: .top, startRadius: 20, endRadius: 420
+                colors: [Theme.violet.opacity(0.16), .clear],
+                center: .top, startRadius: 10, endRadius: 460
             )
             .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 30) {
-                    Text("PORTAL")
-                        .font(.system(size: 20, weight: .light))
-                        .tracking(12)
-                        .padding(.top, 12)
+            VStack(spacing: 0) {
+                Text("PORTAL")
+                    .font(.system(size: 13, weight: .regular))
+                    .tracking(9)
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.top, Theme.Space.m)
 
-                    PortalOrb(size: 210, thinking: vm.isThinking)
+                Spacer()
 
-                    VStack(spacing: 8) {
-                        Text("Point. Ask. Understand.")
-                            .font(.system(size: 26, weight: .semibold))
-                        Text("Your AI interface to the world around you.")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.secondaryText)
-                    }
-                    .multilineTextAlignment(.center)
+                PortalOrb(size: 240, thinking: vm.isThinking)
 
-                    VStack(spacing: 14) {
-                        Button { router.showCamera = true } label: {
-                            Label("Open Camera", systemImage: "camera.viewfinder")
-                        }
-                        .buttonStyle(PortalButtonStyle())
-
-                        HStack(spacing: 12) {
-                            PhotoPickerButton(onPicked: { router.present(image: $0) }) {
-                                Label("Choose Photo", systemImage: "photo")
-                            }
-                            .buttonStyle(GhostButtonStyle())
-
-                            Button { router.tab = .ask } label: {
-                                Label("Ask PORTAL", systemImage: "text.bubble")
-                            }
-                            .buttonStyle(GhostButtonStyle())
-                        }
-                    }
-
-                    statusCard
-                    discoveries
+                VStack(spacing: Theme.Space.s) {
+                    Text(greeting)
+                        .font(Theme.Typeface.display)
+                    statusLine
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 30)
+                .padding(.top, Theme.Space.l)
+
+                Spacer()
+
+                interactionBar
+                    .padding(.horizontal, Theme.Space.m)
+                    .padding(.bottom, Theme.Space.s)
             }
         }
         .foregroundStyle(.white)
     }
 
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionLabel(text: "System status")
-            statusRow(
-                title: "Language model",
-                value: languageStatus,
-                color: vm.phase == .ready ? Theme.cyan : Theme.secondaryText
-            )
-            statusRow(title: "Visual analysis", value: "Not connected yet", color: Theme.secondaryText)
-            statusRow(title: "Processing", value: "On this iPhone, no cloud", color: Theme.cyan)
-            if vm.phase != .ready {
-                Button("Load language model") { router.showModelSheet = true }
-                    .buttonStyle(GhostButtonStyle())
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return "Good morning"
+        case 12..<18: return "Good afternoon"
+        case 18..<23: return "Good evening"
+        default: return "Hello"
+        }
+    }
+
+    /// One quiet line. Tapping it opens the model and system details.
+    private var statusLine: some View {
+        Button { router.showModelSheet = true } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(vm.phase == .ready ? Theme.cyan : Theme.tertiaryText)
+                    .frame(width: 6, height: 6)
+                Text(statusText)
+                    .font(Theme.Typeface.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .portalCard()
     }
 
-    private var languageStatus: String {
+    private var statusText: String {
         switch vm.phase {
-        case .ready: return "\(vm.selectedModelName) · ready"
-        case .loading(let fraction): return fraction < 1 ? "Downloading \(Int(fraction * 100))%" : "Loading into memory"
-        case .failed: return "Failed to load"
-        case .idle: return "Not loaded"
+        case .ready: return "On this iPhone · \(vm.selectedModelName)"
+        case .loading(let fraction): return fraction < 1 ? "Downloading \(Int(fraction * 100))%" : "Waking up…"
+        case .failed: return "Couldn't load · tap for details"
+        case .idle: return "Tap to wake PORTAL"
         }
     }
 
-    private func statusRow(title: String, value: String, color: Color) -> some View {
-        HStack {
-            Text(title).foregroundStyle(Theme.secondaryText)
-            Spacer()
-            Text(value).foregroundStyle(color).multilineTextAlignment(.trailing)
-        }
-        .font(.subheadline)
-    }
+    private var interactionBar: some View {
+        HStack(spacing: Theme.Space.s) {
+            HStack(spacing: 0) {
+                Button { router.tab = .ask } label: {
+                    HStack {
+                        Text("Ask PORTAL…")
+                            .font(Theme.Typeface.body)
+                            .foregroundStyle(Theme.secondaryText)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                PhotoPickerButton(onPicked: { router.present(image: $0) }) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(width: 36, height: 36)
+                }
+            }
+            .padding(.leading, Theme.Space.m)
+            .padding(.trailing, Theme.Space.xs)
+            .frame(height: 56)
+            .background(Theme.panel, in: Capsule())
 
-    private var discoveries: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel(text: "Recent discoveries")
-            Text("Nothing here yet. Saved discoveries will appear here once visual analysis and memory are added.")
-                .font(.subheadline)
-                .foregroundStyle(Theme.secondaryText)
+            Button { router.showCamera = true } label: {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(Theme.signature))
+                    .shadow(color: Theme.blue.opacity(0.4), radius: 14)
+            }
+            .accessibilityLabel("Open camera")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .portalCard()
     }
 }

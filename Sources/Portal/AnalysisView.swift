@@ -11,13 +11,12 @@ struct AnalysisView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: Theme.Space.l) {
                         imageCard
                         statusCard
-                        legendCard
                         actions
                     }
-                    .padding(20)
+                    .padding(Theme.Space.m)
                 }
             }
             .navigationTitle("Analysis")
@@ -39,47 +38,38 @@ struct AnalysisView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    CornerBrackets(length: 22)
-                        .stroke(Theme.cyan.opacity(0.8), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                        .padding(8)
-                )
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         }
     }
 
+    /// Status and the four finding labels in one quiet panel.
     private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: "Analysis status")
-            Text("Visual analysis is not connected yet.")
-                .font(.headline)
-            Text("This version can show your image and keep it in the conversation, but it can't read or describe it. Text recognition and object labels come first, then a vision model.")
-                .font(.subheadline)
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            Text("Analysis isn't connected yet")
+                .font(Theme.Typeface.title)
+            Text("PORTAL can show this image and keep it in the conversation, but it can't read or describe it yet. When analysis arrives, every finding will be labeled by where it came from:")
+                .font(Theme.Typeface.secondary)
                 .foregroundStyle(Theme.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .portalCard()
-    }
 
-    private var legendCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionLabel(text: "How findings will be labeled")
-            ForEach(Provenance.allCases, id: \.self) { provenance in
-                HStack(alignment: .top, spacing: 12) {
-                    ProvenanceBadge(provenance: provenance)
-                        .frame(width: 112, alignment: .leading)
-                    Text(provenance.detail)
-                        .font(.footnote)
-                        .foregroundStyle(Theme.secondaryText)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Provenance.allCases, id: \.self) { provenance in
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                        ProvenanceBadge(provenance: provenance)
+                            .frame(width: 112, alignment: .leading)
+                        Text(provenance.detail)
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                 }
             }
+            .padding(.top, Theme.Space.xs)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .portalCard()
     }
 
     private var actions: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Theme.Space.s) {
             Button {
                 if let image = router.currentImage { vm.attachImage(image) }
                 router.showAnalysis = false
@@ -89,15 +79,17 @@ struct AnalysisView: View {
             }
             .buttonStyle(PortalButtonStyle())
 
-            Button { router.reopenCamera() } label: {
-                Label("Take another photo", systemImage: "camera")
-            }
-            .buttonStyle(GhostButtonStyle())
+            HStack(spacing: Theme.Space.s) {
+                Button { router.reopenCamera() } label: {
+                    Label("Retake", systemImage: "camera")
+                }
+                .buttonStyle(GhostButtonStyle())
 
-            PhotoPickerButton(onPicked: { router.currentImage = $0 }) {
-                Label("Choose another image", systemImage: "photo")
+                PhotoPickerButton(onPicked: { router.currentImage = $0 }) {
+                    Label("Choose another", systemImage: "photo")
+                }
+                .buttonStyle(GhostButtonStyle())
             }
-            .buttonStyle(GhostButtonStyle())
         }
         .frame(maxWidth: .infinity)
     }

@@ -20,16 +20,18 @@ struct AskView: View {
                     }
                 }
             }
-            .navigationTitle("Ask PORTAL")
+            .navigationTitle("Ask")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if vm.phase == .ready {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { vm.unloadModel() } label: { Image(systemName: "cpu") }
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { vm.clearFeed() } label: { Image(systemName: "trash") }
+                    Menu {
+                        Button("Clear conversation", systemImage: "trash") { vm.clearFeed() }
+                        if vm.phase == .ready {
+                            Button("Change model", systemImage: "cpu") { vm.unloadModel() }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
                 }
             }
         }
@@ -39,31 +41,30 @@ struct AskView: View {
     private var feed: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: Theme.Space.s) {
                     if vm.feed.isEmpty {
-                        VStack(spacing: 14) {
-                            PortalOrb(size: 110, thinking: false)
-                            Text("Tell me what to do.")
-                                .font(.headline)
-                            Text("Try: \"remember that my locker code is 4821\"")
-                                .font(.footnote)
+                        VStack(spacing: Theme.Space.s) {
+                            PortalOrb(size: 120)
+                            Text("What should I do?")
+                                .font(Theme.Typeface.title)
+                            Text("Try “remember that my locker code is 4821”")
+                                .font(Theme.Typeface.secondary)
                                 .foregroundStyle(Theme.secondaryText)
                         }
-                        .padding(.top, 50)
+                        .padding(.top, Theme.Space.xl)
                     }
                     ForEach(vm.feed) { item in
                         FeedRow(item: item).id(item.id)
                     }
                     if vm.isThinking {
                         HStack {
-                            PortalOrb(size: 36, thinking: true)
-                            Text("Working…").font(.footnote).foregroundStyle(Theme.secondaryText)
+                            PortalOrb(size: 40, thinking: true)
                             Spacer()
                         }
                         .id("thinking")
                     }
                 }
-                .padding(16)
+                .padding(Theme.Space.m)
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: vm.feed.count) {
@@ -72,44 +73,55 @@ struct AskView: View {
         }
     }
 
+    private var canSend: Bool {
+        !vm.isThinking && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            PhotoPickerButton(onPicked: { vm.attachImage($0) }) {
-                Image(systemName: "photo")
-                    .font(.system(size: 20))
-                    .frame(width: 40, height: 40)
-                    .background(Theme.panel, in: Circle())
+        HStack(alignment: .bottom, spacing: Theme.Space.s) {
+            HStack(alignment: .bottom, spacing: 0) {
+                TextField("Ask PORTAL…", text: $input, axis: .vertical)
+                    .lineLimit(1...4)
+                    .font(Theme.Typeface.body)
+                    .padding(.vertical, 14)
+                PhotoPickerButton(onPicked: { vm.attachImage($0) }) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(width: 36, height: 48)
+                }
             }
-            TextField("What should I do?", text: $input, axis: .vertical)
-                .lineLimit(1...4)
-                .padding(12)
-                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.stroke))
+            .padding(.leading, Theme.Space.m)
+            .padding(.trailing, Theme.Space.xs)
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+
             Button {
                 vm.submit(input)
                 input = ""
             } label: {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 18, weight: .bold))
-                    .frame(width: 40, height: 40)
-                    .background(Theme.blue, in: Circle())
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .background(Circle().fill(Theme.signature))
             }
-            .disabled(vm.isThinking || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(vm.isThinking || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
+            .disabled(!canSend)
+            .opacity(canSend ? 1 : 0.35)
+            .animation(.easeInOut(duration: 0.15), value: canSend)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Theme.Space.m)
+        .padding(.vertical, Theme.Space.s)
     }
 
     private var loadPrompt: some View {
-        VStack(spacing: 10) {
-            Text("The language model isn't loaded.")
-                .font(.subheadline)
+        VStack(spacing: Theme.Space.s) {
+            Text("PORTAL isn't awake yet.")
+                .font(Theme.Typeface.secondary)
                 .foregroundStyle(Theme.secondaryText)
             Button("Load language model") { router.showModelSheet = true }
                 .buttonStyle(PortalButtonStyle())
         }
-        .padding(16)
+        .padding(Theme.Space.m)
     }
 }
 
@@ -120,18 +132,19 @@ private struct FeedRow: View {
         switch item {
         case .user(_, let text):
             HStack {
-                Spacer(minLength: 48)
+                Spacer(minLength: 56)
                 Text(text)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Theme.blue, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .font(Theme.Typeface.body)
+                    .padding(.horizontal, 16).padding(.vertical, 11)
+                    .background(Theme.signature, in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous))
             }
         case .assistant(_, let text):
             HStack {
                 Text(text)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.stroke))
-                Spacer(minLength: 48)
+                    .font(Theme.Typeface.body)
+                    .padding(.horizontal, 16).padding(.vertical, 11)
+                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous))
+                Spacer(minLength: 56)
             }
         case .image(_, let image):
             HStack {
@@ -140,15 +153,14 @@ private struct FeedRow: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small + 4, style: .continuous))
             }
         case .notice(_, let text):
-            VStack(alignment: .leading, spacing: 6) {
-                SectionLabel(text: "System")
-                Text(text).font(.footnote).foregroundStyle(Theme.secondaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .portalCard(padding: 12)
+            Text(text)
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Space.m)
         case .action(let card):
             ActionCardView(card: card)
         }
@@ -160,10 +172,13 @@ private struct ActionCardView: View {
     @EnvironmentObject var vm: AgentViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             HStack(spacing: 8) {
-                Image(systemName: "bolt.fill").foregroundStyle(Theme.cyan)
-                Text(card.title).font(.subheadline.weight(.semibold))
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.cyan)
+                Text(card.title)
+                    .font(.system(size: 15, weight: .medium))
             }
             switch card.state {
             case .pending:
@@ -176,11 +191,11 @@ private struct ActionCardView: View {
             case .running:
                 ProgressView()
             case .done(let result):
-                Text(result).font(.subheadline).foregroundStyle(Theme.cyan)
+                Text(result).font(Theme.Typeface.secondary).foregroundStyle(Theme.cyan)
             case .failed(let message):
-                Text(message).font(.subheadline).foregroundStyle(.red)
+                Text(message).font(Theme.Typeface.secondary).foregroundStyle(.red)
             case .cancelled:
-                Text("Cancelled").font(.subheadline).foregroundStyle(Theme.secondaryText)
+                Text("Cancelled").font(Theme.Typeface.secondary).foregroundStyle(Theme.secondaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

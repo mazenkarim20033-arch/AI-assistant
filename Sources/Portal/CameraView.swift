@@ -45,7 +45,7 @@ struct CameraView: View {
 
     private var viewfinder: some View {
         ZStack {
-            Theme.panel.opacity(0.5)
+            Theme.panel
 
             switch camera.status {
             case .ready:
@@ -68,14 +68,14 @@ struct CameraView: View {
                 )
             }
 
-            CornerBrackets()
-                .stroke(Theme.cyan, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                .padding(10)
+            CornerBrackets(length: 24)
+                .stroke(Theme.cyan.opacity(0.75), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .padding(14)
                 .allowsHitTesting(false)
         }
         .aspectRatio(3.0 / 4.0, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 24)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .padding(.horizontal, Theme.Space.m)
     }
 
     private func message(icon: String, title: String, detail: String, showSettings: Bool) -> some View {

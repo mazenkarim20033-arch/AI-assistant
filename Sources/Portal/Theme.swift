@@ -1,26 +1,57 @@
 import SwiftUI
 import UIKit
 
+/// Design tokens. Screens use these instead of hardcoded values so the look stays consistent.
 enum Theme {
-    static let background = Color(red: 0.02, green: 0.02, blue: 0.04)
-    static let panel = Color(red: 0.07, green: 0.07, blue: 0.10)
-    static let stroke = Color.white.opacity(0.08)
+    // MARK: Colour
+    static let background = Color(red: 0.02, green: 0.02, blue: 0.035)
+    /// Raised surface. A faint tint, used instead of borders.
+    static let panel = Color.white.opacity(0.055)
+    static let stroke = Color.white.opacity(0.06)
     static let blue = Color(red: 0.24, green: 0.48, blue: 1.0)
     static let violet = Color(red: 0.55, green: 0.36, blue: 0.96)
     static let cyan = Color(red: 0.13, green: 0.83, blue: 0.93)
-    static let secondaryText = Color.white.opacity(0.55)
+    static let secondaryText = Color.white.opacity(0.52)
+    static let tertiaryText = Color.white.opacity(0.32)
+
+    // MARK: Spacing
+    enum Space {
+        static let xs: CGFloat = 6
+        static let s: CGFloat = 12
+        static let m: CGFloat = 20
+        static let l: CGFloat = 28
+        static let xl: CGFloat = 40
+    }
+
+    // MARK: Corner radius
+    enum Radius {
+        static let small: CGFloat = 12
+        static let card: CGFloat = 22
+        static let bubble: CGFloat = 20
+    }
+
+    // MARK: Type
+    enum Typeface {
+        static let display = Font.system(size: 32, weight: .light)
+        static let title = Font.system(size: 20, weight: .medium)
+        static let body = Font.system(size: 16, weight: .regular)
+        static let secondary = Font.system(size: 14, weight: .regular)
+        static let caption = Font.system(size: 12, weight: .regular)
+    }
+
+    /// The signature gradient, used sparingly (ring, primary button, icon).
+    static let signature = LinearGradient(
+        colors: [cyan, blue, violet],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+    )
 }
 
 extension View {
-    /// Dark panel with a hairline border.
-    func portalCard(padding: CGFloat = 16) -> some View {
+    /// Raised surface: a soft tint with a generous radius and no border.
+    func portalCard(padding: CGFloat = Theme.Space.m) -> some View {
         self
             .padding(padding)
-            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 1)
-            )
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 }
 
@@ -30,38 +61,36 @@ struct SectionLabel: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .tracking(2)
-            .foregroundStyle(Theme.cyan.opacity(0.8))
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .tracking(2.4)
+            .foregroundStyle(Theme.cyan.opacity(0.75))
     }
 }
 
-/// Primary call-to-action: a glowing capsule.
+/// Primary call-to-action: a single soft-glow capsule.
 struct PortalButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .semibold))
+            .font(.system(size: 16, weight: .medium))
             .foregroundStyle(.white)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 16)
-            .background(
-                Capsule().fill(LinearGradient(colors: [Theme.blue, Theme.violet], startPoint: .leading, endPoint: .trailing))
-            )
-            .shadow(color: Theme.blue.opacity(0.55), radius: configuration.isPressed ? 6 : 16)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .padding(.horizontal, Theme.Space.l)
+            .padding(.vertical, 15)
+            .background(Capsule().fill(Theme.signature))
+            .shadow(color: Theme.blue.opacity(0.35), radius: configuration.isPressed ? 4 : 12)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
-/// Quiet secondary button: outlined capsule.
+/// Quiet secondary button: a soft tint, no outline.
 struct GhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(.white.opacity(0.9))
-            .padding(.horizontal, 18)
+            .padding(.horizontal, Theme.Space.m)
             .padding(.vertical, 12)
-            .background(Capsule().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
+            .background(Capsule().fill(Theme.panel))
             .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
@@ -104,12 +133,12 @@ struct ProvenanceBadge: View {
 
     var body: some View {
         Text(provenance.title)
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
             .tracking(1.5)
             .foregroundStyle(provenance.color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(provenance.color.opacity(0.15), in: Capsule())
+            .background(provenance.color.opacity(0.14), in: Capsule())
     }
 }
 

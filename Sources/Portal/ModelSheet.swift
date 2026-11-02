@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Model picker and loader (the original setup screen, restyled).
+/// Model picker, loader and system status (the details that used to crowd the home screen).
 struct ModelSheet: View {
     @EnvironmentObject var vm: AgentViewModel
     @Environment(\.dismiss) private var dismiss
@@ -10,38 +10,17 @@ struct ModelSheet: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 20) {
-                        PortalOrb(size: 120, thinking: isLoading)
-                            .padding(.top, 8)
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            SectionLabel(text: "Language model")
-                            ForEach(ModelOption.all) { option in
-                                Button { vm.selectedModelID = option.id } label: {
-                                    HStack {
-                                        Text(option.name).font(.subheadline)
-                                        Spacer()
-                                        if vm.selectedModelID == option.id {
-                                            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.cyan)
-                                        }
-                                    }
-                                    .padding(.vertical, 6)
-                                }
-                                .foregroundStyle(.white)
-                                .disabled(isLoading)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .portalCard()
+                    VStack(spacing: Theme.Space.l) {
+                        PortalOrb(size: 130, thinking: isLoading)
+                            .padding(.top, Theme.Space.xs)
 
                         statusArea
 
-                        Text("The model downloads once, then runs entirely on this iPhone.")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.secondaryText)
-                            .multilineTextAlignment(.center)
+                        modelList
+
+                        systemList
                     }
-                    .padding(20)
+                    .padding(Theme.Space.m)
                 }
             }
             .navigationTitle("Intelligence")
@@ -64,22 +43,79 @@ struct ModelSheet: View {
         return false
     }
 
+    private var modelList: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            SectionLabel(text: "Language model")
+                .padding(.bottom, Theme.Space.xs)
+            ForEach(ModelOption.all) { option in
+                Button { vm.selectedModelID = option.id } label: {
+                    HStack {
+                        Text(option.name).font(Theme.Typeface.secondary)
+                        Spacer()
+                        if vm.selectedModelID == option.id {
+                            Image(systemName: "checkmark").foregroundStyle(Theme.cyan)
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .foregroundStyle(.white)
+                .disabled(isLoading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .portalCard()
+    }
+
+    private var systemList: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            SectionLabel(text: "System")
+            row("Language model", languageStatus, vm.phase == .ready ? Theme.cyan : Theme.secondaryText)
+            row("Visual analysis", "Not connected yet", Theme.secondaryText)
+            row("Processing", "On this iPhone, no cloud", Theme.cyan)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .portalCard()
+    }
+
+    private func row(_ title: String, _ value: String, _ color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).foregroundStyle(Theme.secondaryText)
+            Spacer()
+            Text(value).foregroundStyle(color).multilineTextAlignment(.trailing)
+        }
+        .font(Theme.Typeface.secondary)
+    }
+
+    private var languageStatus: String {
+        switch vm.phase {
+        case .ready: return "\(vm.selectedModelName) · ready"
+        case .loading(let fraction): return fraction < 1 ? "Downloading \(Int(fraction * 100))%" : "Loading into memory"
+        case .failed: return "Failed to load"
+        case .idle: return "Not loaded"
+        }
+    }
+
     @ViewBuilder
     private var statusArea: some View {
         switch vm.phase {
         case .loading(let fraction):
-            VStack(spacing: 8) {
+            VStack(spacing: Theme.Space.xs) {
                 ProgressView(value: fraction).tint(Theme.cyan)
                 Text(fraction < 1 ? "Downloading… \(Int(fraction * 100))%" : "Loading into memory…")
-                    .font(.footnote).foregroundStyle(Theme.secondaryText)
+                    .font(Theme.Typeface.caption).foregroundStyle(Theme.secondaryText)
             }
         case .failed(let message):
-            VStack(spacing: 10) {
-                Text("Failed: \(message)").font(.footnote).foregroundStyle(.red)
+            VStack(spacing: Theme.Space.s) {
+                Text("Failed: \(message)").font(Theme.Typeface.caption).foregroundStyle(.red)
                 loadButton
             }
         case .idle, .ready:
-            loadButton
+            VStack(spacing: Theme.Space.xs) {
+                loadButton
+                Text("Downloads once, then runs entirely on this iPhone.")
+                    .font(Theme.Typeface.caption).foregroundStyle(Theme.secondaryText)
+            }
         }
     }
 

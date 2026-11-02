@@ -23,28 +23,31 @@ private struct NotesList: View {
                 ForEach(store.notes) { note in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(note.text)
+                            .font(Theme.Typeface.body)
                         Text(note.date, style: .date)
-                            .font(.caption)
+                            .font(Theme.Typeface.caption)
                             .foregroundStyle(Theme.secondaryText)
                     }
+                    .padding(.vertical, 4)
                     .listRowBackground(Theme.panel)
+                    .listRowSeparator(.hidden)
                 }
                 .onDelete(perform: store.delete)
-            } header: {
-                SectionLabel(text: "Saved notes")
             } footer: {
-                Text("Stored only on this iPhone. Swipe a note to delete it. Conversation history and saved discoveries will be added later.")
+                Text("Stored only on this iPhone. Swipe a note to delete it.")
             }
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .overlay {
             if store.notes.isEmpty {
-                ContentUnavailableView(
-                    "No notes yet",
-                    systemImage: "note.text",
-                    description: Text("Ask PORTAL to remember something.")
-                )
+                VStack(spacing: Theme.Space.s) {
+                    Text("Nothing saved yet")
+                        .font(Theme.Typeface.title)
+                    Text("Ask PORTAL to remember something.")
+                        .font(Theme.Typeface.secondary)
+                        .foregroundStyle(Theme.secondaryText)
+                }
             }
         }
     }

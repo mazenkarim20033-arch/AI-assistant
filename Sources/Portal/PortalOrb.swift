@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The central intelligence indicator. Rotating rings plus a breathing core;
-/// `thinking` adds an outer pulse ring while the model is working.
+/// The central intelligence indicator: a soft glow, one gradient ring and a breathing core.
+/// The app icon uses the same composition. `thinking` adds a slow pulse ring while the model works.
 struct PortalOrb: View {
     var size: CGFloat = 200
     var thinking = false
@@ -13,44 +13,43 @@ struct PortalOrb: View {
         ZStack {
             Circle()
                 .fill(RadialGradient(
-                    colors: [Theme.violet.opacity(0.35), .clear],
-                    center: .center, startRadius: size * 0.05, endRadius: size * 0.7
+                    colors: [Theme.violet.opacity(0.30), .clear],
+                    center: .center, startRadius: size * 0.05, endRadius: size * 0.62
                 ))
-                .blur(radius: 18)
-                .scaleEffect(breathe ? 1.1 : 0.92)
+                .blur(radius: size * 0.08)
+                .scaleEffect(breathe ? 1.06 : 0.94)
 
             Circle()
+                .inset(by: size * 0.16)
                 .strokeBorder(
-                    AngularGradient(colors: [Theme.cyan, Theme.blue, Theme.violet, Theme.cyan], center: .center),
-                    lineWidth: 2
+                    AngularGradient(
+                        colors: [Theme.cyan, Theme.blue, Theme.violet, Theme.cyan],
+                        center: .center
+                    ),
+                    lineWidth: max(1.5, size * 0.012)
                 )
                 .rotationEffect(.degrees(spin ? 360 : 0))
 
-            Circle()
-                .inset(by: size * 0.08)
-                .strokeBorder(Theme.blue.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 6]))
-                .rotationEffect(.degrees(spin ? -360 : 0))
-
             if thinking {
                 Circle()
-                    .strokeBorder(Theme.cyan.opacity(0.5), lineWidth: 1)
-                    .scaleEffect(breathe ? 1.12 : 0.98)
-                    .opacity(breathe ? 0.1 : 0.7)
+                    .inset(by: size * 0.08)
+                    .strokeBorder(Theme.cyan.opacity(0.4), lineWidth: 1)
+                    .scaleEffect(breathe ? 1.08 : 0.97)
+                    .opacity(breathe ? 0.05 : 0.6)
             }
 
             Circle()
                 .fill(RadialGradient(
-                    colors: [Theme.cyan.opacity(0.95), Theme.blue.opacity(0.65), .black],
-                    center: .center, startRadius: 2, endRadius: size * 0.26
+                    colors: [Theme.cyan.opacity(0.9), Theme.blue.opacity(0.55), .clear],
+                    center: .center, startRadius: 1, endRadius: size * 0.2
                 ))
-                .frame(width: size * 0.36, height: size * 0.36)
-                .shadow(color: Theme.cyan.opacity(0.6), radius: 14)
-                .scaleEffect(breathe ? 1.07 : 0.94)
+                .frame(width: size * 0.4, height: size * 0.4)
+                .scaleEffect(breathe ? 1.06 : 0.94)
         }
         .frame(width: size, height: size)
         .onAppear {
-            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) { spin = true }
-            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) { breathe = true }
+            withAnimation(.linear(duration: 24).repeatForever(autoreverses: false)) { spin = true }
+            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) { breathe = true }
         }
     }
 }
