@@ -8,7 +8,7 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 | 1 | Existing app audit and plan | Complete |
 | 2 | Product interface: home, camera, conversation, analysis, discover, memory screens | Complete |
 | 3 | Camera integration: permission, live preview, photo capture, gallery selection | Complete (confirmed by owner) |
-| - | Visual refinement and branding (minimal design system, home screen, app icon) | Implemented. Build check: see "Current status" |
+| - | Visual refinement and branding (minimal design system, home screen, app icon) | Complete (cloud build #10 passed; on-device look to be confirmed by owner) |
 | **4** | **Local visual intelligence: OCR and classification (Apple Vision), then vision-language model evaluation** | **Next milestone** |
 | 5 | Agent integration: routing, structured outputs, validation, visual context, follow-ups | Planned |
 | 6 | Persistent visual memory and saved discoveries | Planned |
@@ -21,8 +21,8 @@ and get an explanation from models running on the phone. Original roadmap: uncha
 - Agent: one validated JSON action per request, executed in Swift. Tools today: save / search / list notes.
 - Camera: live preview, capture and gallery picker work. Captured images are kept in memory only.
 - **Visual analysis is not implemented.** The analysis screen says so. No OCR, detection or vision model yet.
-- Visual refinement: implemented (design tokens in `Theme.swift`, icon-only tab bar, minimal home screen,
-  asset-catalog app icon). Cloud build: pending at time of writing.
+- Visual refinement: complete (design tokens in `Theme.swift`, icon-only tab bar, minimal home screen,
+  asset-catalog app icon). Cloud build #10 passed. Not yet checked on the device.
 
 ## Rules that stay fixed
 
